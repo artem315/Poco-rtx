@@ -77,4 +77,5 @@ void main() {
     } else {
         fragColor = vec4(add, shade * (1.0 - reflWeight));
     }
+    RTX_KEEP_PRECISION(fragColor);
 }

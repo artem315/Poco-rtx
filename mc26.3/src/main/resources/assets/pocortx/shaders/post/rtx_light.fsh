@@ -15,7 +15,9 @@ layout(location = 0) out vec4 fragColor;
 float computeAO(vec3 p, vec3 n, float noise) {
     int count = int(RtxCounts.x + 0.5);
     float radius = RtxParams.x;
-    vec3 helper = abs(n.y) < 0.95 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+    // Arithmetic select: on the OpenGL backend SPIRV-Cross turns a vector ?: into
+    // bvec3(cond), which LTW's GLSL printer mangles into an invalid assignment.
+    vec3 helper = mix(vec3(1.0, 0.0, 0.0), vec3(0.0, 1.0, 0.0), step(abs(n.y), 0.95));
     vec3 t = normalize(cross(helper, n));
     vec3 b = cross(n, t);
     float occlusion = 0.0;
@@ -146,4 +148,5 @@ void main() {
     float lit = (RtxToggles.y > 0.5 && RtxLight.w > 0.001) ? traceShadow(p, n, noise) : 1.0;
 
     fragColor = vec4(ao, lit, shafts, 1.0);
+    RTX_KEEP_PRECISION(fragColor);
 }

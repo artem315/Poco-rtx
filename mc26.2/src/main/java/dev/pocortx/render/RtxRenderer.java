@@ -68,15 +68,30 @@ public final class RtxRenderer {
     private static final String FRAME_UBO = "RtxFrame";
     private static final int FRAME_UBO_SIZE = 4 * 64 + 12 * 16;
 
-    private static final RenderPipeline LIGHT = post("rtx_light", null, "OpaqueDepthSampler", "FinalDepthSampler");
-    // Every pipeline lists both depth samplers: the shared include declares them, and the
-    // pipeline builder rejects shader uniforms missing from the layout.
-    private static final RenderPipeline BLUR = post("rtx_blur", null, "OpaqueDepthSampler", "FinalDepthSampler", "LightSampler");
-    private static final RenderPipeline REFLECT = post("rtx_reflect", null, "OpaqueDepthSampler", "FinalDepthSampler", "SceneSampler");
-    // result = src.rgb + dst.rgb * src.a, destination alpha untouched
-    private static final RenderPipeline COMPOSITE = post("rtx_composite",
-            new BlendFunction(BlendFactor.ONE, BlendFactor.SRC_ALPHA, BlendFactor.ZERO, BlendFactor.ONE),
-            "OpaqueDepthSampler", "FinalDepthSampler", "LightSampler", "ReflSampler");
+    private static final String PRECISION_HINT_SAMPLER = "PrecisionHintSampler";
+
+    // The OpenGL backend gets its own variants with a never-sampled shadow sampler that keeps
+    // LTW from turning the depth samplers lowp (see POCORTX_PRECISION_HINT in rtx_common.glsl).
+    private static final Passes DEFAULT_PASSES = Passes.create(false);
+    private static final Passes GL_PASSES = Passes.create(true);
+
+    private record Passes(RenderPipeline light, RenderPipeline blur, RenderPipeline reflect, RenderPipeline composite) {
+        static Passes create(boolean precisionHint) {
+            // Every pipeline lists both depth samplers: the shared include declares them, and the
+            // pipeline builder rejects shader uniforms missing from the layout.
+            return new Passes(
+                    post("rtx_light", null, precisionHint, "OpaqueDepthSampler", "FinalDepthSampler"),
+                    post("rtx_blur", null, precisionHint, "OpaqueDepthSampler", "FinalDepthSampler", "LightSampler"),
+                    post("rtx_reflect", null, precisionHint, "OpaqueDepthSampler", "FinalDepthSampler", "SceneSampler"),
+                    // result = src.rgb + dst.rgb * src.a, destination alpha untouched
+                    post("rtx_composite", new BlendFunction(BlendFactor.ONE, BlendFactor.SRC_ALPHA, BlendFactor.ZERO, BlendFactor.ONE),
+                            precisionHint, "OpaqueDepthSampler", "FinalDepthSampler", "LightSampler", "ReflSampler"));
+        }
+
+        RenderPipeline[] all() {
+            return new RenderPipeline[] {light, blur, reflect, composite};
+        }
+    }
 
     private TextureTarget opaqueDepth;
     private TextureTarget lightTarget;
@@ -105,19 +120,33 @@ public final class RtxRenderer {
     private RtxRenderer() {
     }
 
-    private static RenderPipeline post(String name, BlendFunction blend, String... samplers) {
+    private static RenderPipeline post(String name, BlendFunction blend, boolean precisionHint, String... samplers) {
         BindGroupLayout.Builder layout = BindGroupLayout.builder();
         for (String sampler : samplers) {
             layout.withSampler(sampler);
         }
+        if (precisionHint) {
+            layout.withSampler(PRECISION_HINT_SAMPLER);
+        }
         layout.withUniform(FRAME_UBO, UniformType.UNIFORM_BUFFER);
-        return RenderPipeline.builder(RenderPipelines.POST_PROCESSING_SNIPPET)
-                .withLocation(Identifier.fromNamespaceAndPath("pocortx", "pipeline/" + name))
+        RenderPipeline.Builder builder = RenderPipeline.builder(RenderPipelines.POST_PROCESSING_SNIPPET)
+                .withLocation(Identifier.fromNamespaceAndPath("pocortx", "pipeline/" + name + (precisionHint ? "_gl" : "")))
                 .withVertexShader(Identifier.withDefaultNamespace("core/screenquad"))
                 .withFragmentShader(Identifier.fromNamespaceAndPath("pocortx", "post/" + name))
                 .withBindGroupLayout(layout.build())
-                .withColorTargetState(blend == null ? ColorTargetState.DEFAULT : new ColorTargetState(blend))
-                .build();
+                .withColorTargetState(blend == null ? ColorTargetState.DEFAULT : new ColorTargetState(blend));
+        if (precisionHint) {
+            builder.withShaderDefine("POCORTX_PRECISION_HINT");
+        }
+        return builder.build();
+    }
+
+    private static boolean openGlBackend() {
+        return "OpenGL".equals(RenderSystem.getDevice().getDeviceInfo().backendName());
+    }
+
+    private static Passes passes() {
+        return openGlBackend() ? GL_PASSES : DEFAULT_PASSES;
     }
 
     public boolean hasFailed() {
@@ -217,19 +246,20 @@ public final class RtxRenderer {
             writeFrameUniforms(levelState, main);
             RtxConfig config = RtxConfig.get();
             GpuSampler nearest = nearest();
+            Passes passes = passes();
             RenderTarget finalTarget = finalDepthTarget;
 
-            draw("PocoRTX lighting", LIGHT, lightTarget, pass -> {
+            draw("PocoRTX lighting", passes.light(), lightTarget, pass -> {
                 pass.bindTexture("OpaqueDepthSampler", opaqueDepth.getDepthTextureView(), nearest);
                 pass.bindTexture("FinalDepthSampler", finalTarget.getDepthTextureView(), nearest);
             });
-            draw("PocoRTX denoise", BLUR, blurTarget, pass -> {
+            draw("PocoRTX denoise", passes.blur(), blurTarget, pass -> {
                 pass.bindTexture("OpaqueDepthSampler", opaqueDepth.getDepthTextureView(), nearest);
                 pass.bindTexture("FinalDepthSampler", finalTarget.getDepthTextureView(), nearest);
                 pass.bindTexture("LightSampler", lightTarget.getColorTextureView(), nearest);
             });
             if (config.reflections && !submerged(levelState.cameraRenderState)) {
-                draw("PocoRTX reflections", REFLECT, reflectTarget, pass -> {
+                draw("PocoRTX reflections", passes.reflect(), reflectTarget, pass -> {
                     pass.bindTexture("OpaqueDepthSampler", opaqueDepth.getDepthTextureView(), nearest);
                     pass.bindTexture("FinalDepthSampler", finalTarget.getDepthTextureView(), nearest);
                     pass.bindTexture("SceneSampler", main.getColorTextureView(), nearest);
@@ -237,7 +267,7 @@ public final class RtxRenderer {
             } else {
                 encoder().clearColorTexture(reflectTarget.getColorTexture(), new Vector4f(0.0f));
             }
-            drawInto("PocoRTX composite", COMPOSITE, main, pass -> {
+            drawInto("PocoRTX composite", passes.composite(), main, pass -> {
                 pass.bindTexture("OpaqueDepthSampler", opaqueDepth.getDepthTextureView(), nearest);
                 pass.bindTexture("FinalDepthSampler", finalTarget.getDepthTextureView(), nearest);
                 pass.bindTexture("LightSampler", blurTarget.getColorTextureView(), nearest);
@@ -258,6 +288,9 @@ public final class RtxRenderer {
             RenderSystem.bindDefaultUniforms(pass);
             pass.setPipeline(pipeline);
             pass.setUniform(FRAME_UBO, frameUbo.currentBuffer());
+            if (openGlBackend()) {
+                pass.bindTexture(PRECISION_HINT_SAMPLER, opaqueDepth.getDepthTextureView(), nearest());
+            }
             bind.accept(pass);
             pass.draw(3, 1, 0, 0);
         }
@@ -375,7 +408,7 @@ public final class RtxRenderer {
         if (pipelinesChecked) {
             return true;
         }
-        for (RenderPipeline pipeline : new RenderPipeline[] {LIGHT, BLUR, REFLECT, COMPOSITE}) {
+        for (RenderPipeline pipeline : passes().all()) {
             if (!RenderSystem.getDevice().precompilePipeline(pipeline).isValid()) {
                 fail("shader compilation", new IllegalStateException("pipeline " + pipeline.getLocation() + " did not compile"));
                 return false;

@@ -47,6 +47,9 @@ public final class AutotestClient implements ClientModInitializer {
                 c.gui.hud.toggle();
             }
             c.options.renderDistance().set(8);
+            if (Boolean.getBoolean("pocortx.autotest.oit")) {
+                c.options.improvedTransparency().set(true);
+            }
             run(c, "gamerule doDaylightCycle false");
             run(c, "gamerule doWeatherCycle false");
             run(c, "gamerule doMobSpawning false");
@@ -107,7 +110,7 @@ public final class AutotestClient implements ClientModInitializer {
         steps.add(new Step(1000, null, c -> {
             setRtx(true, RtxConfig.DebugView.OFF);
             LOGGER.info("AUTOTEST DONE failed={} reason={} oit={} backend={}", RtxRenderer.INSTANCE.hasFailed(), RtxRenderer.INSTANCE.failureReason(),
-                    (c.levelRenderer.translucentTarget() != null), com.mojang.blaze3d.systems.RenderSystem.getDevice().getDeviceInfo().backendName());
+                    c.gameRenderer.gameRenderState().useShaderTransparency(), com.mojang.blaze3d.systems.RenderSystem.getDevice().getDeviceInfo().backendName());
             c.stop();
         }));
     }

@@ -2,8 +2,21 @@
     "vertex": "pocortx_fullscreen",
     "fragment": "pocortx_pack",
     "samplers": [
-        { "name": "DepthSampler" }
+        {
+            "name": "DepthSampler"
+        },
+        {
+            "name": "PrecisionHintSampler"
+        }
     ],
     "uniforms": [
+        {
+            "name": "PrecisionHint",
+            "type": "float",
+            "count": 1,
+            "values": [
+                0.0
+            ]
+        }
     ]
 }

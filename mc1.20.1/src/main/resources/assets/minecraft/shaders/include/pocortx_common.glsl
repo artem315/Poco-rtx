@@ -19,9 +19,10 @@ uniform sampler2D OpaqueSampler;
 // Depth of the finished scene, translucent surfaces included.
 uniform sampler2D FinalSampler;
 
+// Inverse of pocortx_pack: depth = (r + g / 256 + b / 65536) / 255.
 float rtxUnpackDepth(vec4 c) {
     vec3 b = floor(c.rgb * 255.0 + 0.5);
-    return (b.r * 65536.0 + b.g * 256.0 + b.b) / 16777215.0;
+    return (b.r + b.g / 256.0 + b.b / 65536.0) / 255.0;
 }
 
 float rtxOpaqueDepth(vec2 uv) {

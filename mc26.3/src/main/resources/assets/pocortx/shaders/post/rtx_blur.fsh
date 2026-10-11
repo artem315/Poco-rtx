@@ -35,4 +35,5 @@ void main() {
         }
     }
     fragColor = sum / max(wsum, 1e-6);
+    RTX_KEEP_PRECISION(fragColor);
 }

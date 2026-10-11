@@ -26,6 +26,17 @@ layout(std140) uniform RtxFrame {
 uniform sampler2D OpaqueDepthSampler;
 uniform sampler2D FinalDepthSampler;
 
+#ifdef POCORTX_PRECISION_HINT
+// OpenGL backend only. LTW (MJ Launcher's GL -> GLES wrapper) declares every 2D
+// sampler lowp, which is fp16 on Mali and far too coarse for depth, unless the
+// shader uses a shadow sampler. RTX_KEEP_PRECISION reads one in a branch that never
+// runs (sample counts are never negative), so the depth samplers stay highp.
+uniform sampler2DShadow PrecisionHintSampler;
+#define RTX_KEEP_PRECISION(color) if (RtxCounts.x < 0.0) (color).a = texture(PrecisionHintSampler, vec3(0.5))
+#else
+#define RTX_KEEP_PRECISION(color)
+#endif
+
 bool rtxIsSky(float d) {
     return d <= 0.0000001;
 }

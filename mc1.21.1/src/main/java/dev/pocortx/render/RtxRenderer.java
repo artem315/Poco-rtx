@@ -347,6 +347,8 @@ public final class RtxRenderer {
 
     private void packDepth(int depthTexture, Framebuffer target) {
         packProgram.addSampler("DepthSampler", depthTexture);
+        // Only declared so LTW keeps 2D samplers highp; the shader never samples it.
+        packProgram.addSampler("PrecisionHintSampler", depthTexture);
         drawFullscreen(packProgram, target);
     }
 

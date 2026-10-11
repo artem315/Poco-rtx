@@ -200,4 +200,5 @@ void main() {
     float fresnel = f0 + (1.0 - f0) * pow(1.0 - ndv, 5.0);
     float weight = clamp(strength * fresnel * visibility * fade, 0.0, 1.0);
     fragColor = vec4(col, weight);
+    RTX_KEEP_PRECISION(fragColor);
 }
