@@ -78,6 +78,11 @@ public final class AutotestClient implements ClientModInitializer {
         steps.add(new Step(30, "day_debug_ao", c -> setRtx(true, RtxConfig.DebugView.AO)));
         steps.add(new Step(30, "day_debug_shadows", c -> setRtx(true, RtxConfig.DebugView.SHADOWS)));
         steps.add(new Step(30, "day_debug_reflections", c -> setRtx(true, RtxConfig.DebugView.REFLECTIONS)));
+        steps.add(new Step(30, "day_debug_gi", c -> setRtx(true, RtxConfig.DebugView.GI)));
+        steps.add(new Step(30, "day_fx_only", c -> {
+            setRtx(false, RtxConfig.DebugView.OFF);
+            RtxConfig.get().shader.enabled = true;
+        }));
 
         steps.add(new Step(30, "water_on", c -> {
             run(c, waterView);
@@ -91,7 +96,7 @@ public final class AutotestClient implements ClientModInitializer {
             setRtx(true, RtxConfig.DebugView.OFF);
         }));
         steps.add(new Step(30, "sunset_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
-        steps.add(new Step(30, "sunset_debug_shafts", c -> setRtx(true, RtxConfig.DebugView.LIGHT_SHAFTS)));
+        steps.add(new Step(30, "sunset_debug_shafts", c -> setRtx(true, RtxConfig.DebugView.VOLUMETRIC)));
 
         steps.add(new Step(200, "rain_on", c -> {
             run(c, "time set 6000");
@@ -107,7 +112,13 @@ public final class AutotestClient implements ClientModInitializer {
             run(c, "time set 18000");
             setRtx(true, RtxConfig.DebugView.OFF);
         }));
+        // The new screens: Video Settings with the two buttons, then RTX and shader settings.
+        steps.add(new Step(20, "ui_video", c -> c.gui.setScreen(
+                new net.minecraft.client.gui.screens.options.VideoSettingsScreen(null, c, c.options))));
+        steps.add(new Step(20, "ui_rtx", c -> c.gui.setScreen(new dev.pocortx.gui.RtxSettingsScreen(null))));
+        steps.add(new Step(20, "ui_shader", c -> c.gui.setScreen(new dev.pocortx.gui.ShaderSettingsScreen(null))));
         steps.add(new Step(1000, null, c -> {
+            c.gui.setScreen(null);
             setRtx(true, RtxConfig.DebugView.OFF);
             LOGGER.info("AUTOTEST DONE failed={} reason={} oit={} backend={}", RtxRenderer.INSTANCE.hasFailed(), RtxRenderer.INSTANCE.failureReason(),
                     c.gameRenderer.gameRenderState().useShaderTransparency(), com.mojang.blaze3d.systems.RenderSystem.getDevice().getDeviceInfo().backendName());
@@ -133,7 +144,8 @@ public final class AutotestClient implements ClientModInitializer {
         Step done = steps.get(index);
         if (done.name() != null) {
             String file = done.name() + ".png";
-            LOGGER.info("AUTOTEST shot {} fps={} failed={}", file, client.getFps(), RtxRenderer.INSTANCE.hasFailed());
+            LOGGER.info("AUTOTEST shot {} fps={} failed={} rt={} sections={} instances={}", file, client.getFps(), RtxRenderer.INSTANCE.hasFailed(),
+                    RtxRenderer.INSTANCE.hardwareRtActive(), RtxRenderer.INSTANCE.traceSections(), RtxRenderer.INSTANCE.traceInstances());
             Screenshot.grab(client.gameDirectory, file, client.gameRenderer.mainRenderTarget(), 1, msg -> { });
         }
         index++;
@@ -143,9 +155,11 @@ public final class AutotestClient implements ClientModInitializer {
         }
     }
 
+    /** "Off" shots are plain vanilla: ray tracing and the shader effects both off. */
     private static void setRtx(boolean enabled, RtxConfig.DebugView view) {
         RtxConfig config = RtxConfig.get();
         config.enabled = enabled;
+        config.shader.enabled = enabled;
         config.debugView = view;
     }
 

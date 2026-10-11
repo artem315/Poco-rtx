@@ -3,6 +3,7 @@ package dev.pocortx.mixin;
 import com.llamalad7.mixinextras.sugar.Local;
 import com.mojang.blaze3d.framegraph.FrameGraphBuilder;
 import dev.pocortx.render.RtxRenderer;
+import dev.pocortx.rt.RtScene;
 import net.minecraft.client.renderer.LevelRenderer;
 import net.minecraft.client.renderer.LevelTargetBundle;
 import org.spongepowered.asm.mixin.Final;
@@ -17,6 +18,20 @@ abstract class LevelRendererMixin {
     @Shadow
     @Final
     private LevelTargetBundle targets;
+
+    // Only the level's own features (not the first-person hand or GUI items) become ray tracing geometry.
+    @Inject(method = "render", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;prepareFrame(Lnet/minecraft/client/renderer/SubmitNodeStorage;)Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;"))
+    private void pocortx$beginEntityCapture(CallbackInfo ci) {
+        RtScene.beginEntityCapture();
+    }
+
+    @Inject(method = "render", at = @At(value = "INVOKE",
+            target = "Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher;prepareFrame(Lnet/minecraft/client/renderer/SubmitNodeStorage;)Lnet/minecraft/client/renderer/feature/FeatureRenderDispatcher$PreparedFrame;",
+            shift = At.Shift.AFTER))
+    private void pocortx$endEntityCapture(CallbackInfo ci) {
+        RtScene.endEntityCapture();
+    }
 
     // Improved transparency draws water into its own target and merges it in a later
     // post chain; the effects have to run after that merge to sit on top of the water.

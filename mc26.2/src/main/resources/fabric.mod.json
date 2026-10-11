@@ -3,7 +3,7 @@
   "id": "pocortx",
   "version": "${version}",
   "name": "PocoRTX",
-  "description": "Screen-space ray tracing for phones: ray traced ambient occlusion, sun shadows, light shafts and reflections on water, glass and rain puddles. Built for MJ Launcher / Pojav-based launchers (tuned for POCO X8 Pro Max). Works on the OpenGL and Vulkan backends. Commands: /rtx",
+  "description": "Hardware ray tracing for phones (Vulkan ray queries): ray traced sun shadows, ambient occlusion, global illumination, reflections, specular highlights and volumetric light, plus BSL-style shader effects. Built for MJ Launcher (tuned for POCO X8 Pro Max). Hardware RT needs the Vulkan backend and a GPU with ray query support. Commands: /rtx",
   "authors": ["artem315"],
   "contact": {
     "sources": "https://github.com/artem315/Poco-rtx"

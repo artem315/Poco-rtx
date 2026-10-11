@@ -1,130 +1,87 @@
 package dev.pocortx.gui;
 
-import dev.pocortx.command.RtxCommand;
 import dev.pocortx.config.RtxConfig;
 import dev.pocortx.render.RtxRenderer;
-import java.util.Arrays;
-import java.util.Locale;
-import java.util.function.Consumer;
-import java.util.function.Supplier;
-import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.components.AbstractSliderButton;
+import dev.pocortx.rt.RtDeviceSupport;
+import net.minecraft.ChatFormatting;
+import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
-import net.minecraft.client.gui.components.CycleButton;
 import net.minecraft.client.gui.screens.Screen;
-import net.minecraft.network.chat.CommonComponents;
+import net.minecraft.client.gui.screens.options.OptionsSubScreen;
 import net.minecraft.network.chat.Component;
 
-public final class RtxSettingsScreen extends Screen {
-    private static final int ROW = 24;
-
-    private final Screen parent;
-
+/** "RTX settings": hardware ray tracing and every effect it drives. */
+public final class RtxSettingsScreen extends OptionsSubScreen {
     public RtxSettingsScreen(Screen parent) {
-        super(Component.translatable("pocortx.settings.title"));
-        this.parent = parent;
+        super(parent, Minecraft.getInstance().options, Component.translatable("pocortx.settings.title"));
     }
 
     @Override
-    protected void init() {
+    protected void addOptions() {
         RtxConfig c = RtxConfig.get();
-        int colWidth = Math.min(150, (this.width - 30) / 2);
-        int left = this.width / 2 - colWidth - 5;
-        int right = this.width / 2 + 5;
-        int y = Math.max(28, this.height / 2 - (ROW * 8) / 2);
-
-        addRenderableWidget(CycleButton.onOffBuilder(c.enabled)
-                .create(left, y, colWidth, 20, Component.translatable("pocortx.option.enabled"), (b, v) -> {
+        Button status = Button.builder(statusText(), b -> {
+        }).width(310).build();
+        status.active = false;
+        this.list.addBig(status);
+        this.list.addSmall(
+                Options2.toggle("pocortx.option.enabled", c.enabled, v -> {
                     c.enabled = v;
                     if (v) {
                         RtxRenderer.INSTANCE.resetFailure();
                     }
-                    RtxConfig.save();
-                }));
-        addRenderableWidget(CycleButton.builder(RtxCommand::qualityName, c.quality)
-                .withValues(Arrays.asList(RtxConfig.Quality.values()))
-                .create(right, y, colWidth, 20, Component.translatable("pocortx.option.quality"), (b, v) -> {
-                    c.quality = v;
-                    RtxConfig.save();
-                }));
-        y += ROW;
+                }),
+                Options2.cycle("pocortx.option.mode", RtxConfig.Mode.values(), c.mode, m -> Options2.enumName("pocortx.mode.", m), v -> c.mode = v));
+        this.list.addSmall(
+                Options2.cycle("pocortx.option.quality", RtxConfig.Quality.values(), c.quality, q -> Options2.enumName("pocortx.quality.", q),
+                        v -> c.quality = v),
+                Options2.range("pocortx.option.rt_distance", 2, 8, c.rtDistance, "pocortx.value.chunks", v -> c.rtDistance = v));
 
-        y = effectRow(left, right, colWidth, y, "pocortx.option.ao", c.ambientOcclusion, v -> c.ambientOcclusion = v,
-                "pocortx.option.ao_strength", () -> c.aoStrength, v -> c.aoStrength = v);
-        y = effectRow(left, right, colWidth, y, "pocortx.option.shadows", c.shadows, v -> c.shadows = v,
-                "pocortx.option.shadow_strength", () -> c.shadowStrength, v -> c.shadowStrength = v);
-        y = effectRow(left, right, colWidth, y, "pocortx.option.reflections", c.reflections, v -> c.reflections = v,
-                "pocortx.option.reflection_strength", () -> c.reflectionStrength, v -> c.reflectionStrength = v);
-        y = effectRow(left, right, colWidth, y, "pocortx.option.shafts", c.lightShafts, v -> c.lightShafts = v,
-                "pocortx.option.shaft_strength", () -> c.lightShaftStrength, v -> c.lightShaftStrength = v);
-
-        addRenderableWidget(toggle(left, y, colWidth, "pocortx.option.puddles", c.rainPuddles, v -> c.rainPuddles = v));
-        addRenderableWidget(toggle(right, y, colWidth, "pocortx.option.waves", c.waterWaves, v -> c.waterWaves = v));
-        y += ROW;
-
-        addRenderableWidget(CycleButton.<RtxConfig.DebugView>builder(
-                        v -> Component.translatable("pocortx.debug." + v.name().toLowerCase(Locale.ROOT)), c.debugView)
-                .withValues(Arrays.asList(RtxConfig.DebugView.values()))
-                .create(left, y, colWidth, 20, Component.translatable("pocortx.option.debug"), (b, v) -> {
-                    c.debugView = v;
-                    RtxConfig.save();
-                }));
-        addRenderableWidget(Button.builder(Component.translatable("pocortx.option.reset"), b -> {
+        this.list.addHeader(Component.translatable("pocortx.header.effects"));
+        this.list.addSmall(
+                Options2.toggle("pocortx.option.shadows", c.shadows, v -> c.shadows = v),
+                Options2.slider("pocortx.option.shadow_strength", 0.0, 1.0, c.shadowStrength, 1.0, v -> c.shadowStrength = (float) v));
+        this.list.addSmall(
+                Options2.toggle("pocortx.option.ao", c.ambientOcclusion, v -> c.ambientOcclusion = v),
+                Options2.slider("pocortx.option.ao_strength", 0.0, 1.0, c.aoStrength, 1.0, v -> c.aoStrength = (float) v));
+        this.list.addSmall(
+                Options2.toggle("pocortx.option.gi", c.globalIllumination, v -> c.globalIllumination = v),
+                Options2.slider("pocortx.option.gi_strength", 0.0, 2.0, c.giStrength, 1.0, v -> c.giStrength = (float) v));
+        this.list.addSmall(
+                Options2.toggle("pocortx.option.reflections", c.reflections, v -> c.reflections = v),
+                Options2.slider("pocortx.option.reflection_strength", 0.0, 1.0, c.reflectionStrength, 1.0, v -> c.reflectionStrength = (float) v));
+        this.list.addSmall(
+                Options2.toggle("pocortx.option.specular", c.specular, v -> c.specular = v),
+                Options2.slider("pocortx.option.specular_strength", 0.0, 2.0, c.specularStrength, 1.0, v -> c.specularStrength = (float) v));
+        this.list.addSmall(
+                Options2.toggle("pocortx.option.volumetric", c.volumetricLight, v -> c.volumetricLight = v),
+                Options2.slider("pocortx.option.volumetric_strength", 0.0, 1.0, c.volumetricStrength, 1.0, v -> c.volumetricStrength = (float) v));
+        this.list.addSmall(
+                Options2.slider("pocortx.option.emissive_strength", 0.0, 2.0, c.emissiveStrength, 1.0, v -> c.emissiveStrength = (float) v),
+                Options2.toggle("pocortx.option.alpha_shadows", c.alphaTestedShadows, v -> c.alphaTestedShadows = v));
+        this.list.addSmall(
+                Options2.toggle("pocortx.option.puddles", c.rainPuddles, v -> c.rainPuddles = v),
+                Options2.toggle("pocortx.option.waves", c.waterWaves, v -> c.waterWaves = v));
+        this.list.addSmall(
+                Options2.toggle("pocortx.option.denoise", c.temporalDenoise, v -> c.temporalDenoise = v),
+                Options2.cycle("pocortx.option.debug", RtxConfig.DebugView.values(), c.debugView, d -> Options2.enumName("pocortx.debug.", d),
+                        v -> c.debugView = v));
+        this.list.addBig(Button.builder(Component.translatable("pocortx.option.reset"), b -> {
             RtxConfig.reset();
-            this.rebuildWidgets();
-        }).bounds(right, y, colWidth, 20).build());
-        y += ROW + 4;
-
-        addRenderableWidget(Button.builder(CommonComponents.GUI_DONE, b -> onClose())
-                .bounds(this.width / 2 - 100, Math.min(y, this.height - 24), 200, 20).build());
+            this.minecraft.gui.setScreen(new RtxSettingsScreen(this.lastScreen));
+        }).width(310).build());
     }
 
-    private int effectRow(int left, int right, int width, int y, String toggleKey, boolean value, Consumer<Boolean> setter,
-                          String sliderKey, Supplier<Float> getter, Consumer<Float> sliderSetter) {
-        addRenderableWidget(toggle(left, y, width, toggleKey, value, setter));
-        addRenderableWidget(new StrengthSlider(right, y, width, sliderKey, getter.get(), sliderSetter));
-        return y + ROW;
-    }
-
-    private static CycleButton<Boolean> toggle(int x, int y, int width, String key, boolean value, Consumer<Boolean> setter) {
-        return CycleButton.onOffBuilder(value).create(x, y, width, 20, Component.translatable(key), (b, v) -> {
-            setter.accept(v);
-            RtxConfig.save();
-        });
+    private static Component statusText() {
+        String reason = RtDeviceSupport.unavailableReason();
+        if (reason == null) {
+            return Component.translatable("pocortx.rt.status.ok", RtDeviceSupport.deviceName()).withStyle(ChatFormatting.GREEN);
+        }
+        return Component.translatable("pocortx.rt.status.off", Component.translatable(reason)).withStyle(ChatFormatting.GOLD);
     }
 
     @Override
-    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float a) {
-        super.extractRenderState(graphics, mouseX, mouseY, a);
-        graphics.centeredText(this.font, this.title, this.width / 2, 12, 0xFFFFFFFF);
-    }
-
-    @Override
-    public void onClose() {
+    public void removed() {
         RtxConfig.save();
-        this.minecraft.gui.setScreen(this.parent);
-    }
-
-    private static final class StrengthSlider extends AbstractSliderButton {
-        private final String key;
-        private final Consumer<Float> setter;
-
-        StrengthSlider(int x, int y, int width, String key, float value, Consumer<Float> setter) {
-            super(x, y, width, 20, Component.empty(), value);
-            this.key = key;
-            this.setter = setter;
-            updateMessage();
-        }
-
-        @Override
-        protected void updateMessage() {
-            setMessage(Component.translatable(key, Math.round(this.value * 100.0) + "%"));
-        }
-
-        @Override
-        protected void applyValue() {
-            setter.accept((float) this.value);
-            RtxConfig.save();
-        }
+        super.removed();
     }
 }

@@ -20,6 +20,23 @@ dependencies {
     compileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
 }
 
+// The ray tracing compute shaders are GLSL with ray queries; they ship as SPIR-V.
+// Run `./gradlew compileRtShaders` after editing src/main/rtshaders (needs glslangValidator on PATH).
+def rtKernels = ['rt_light', 'rt_indirect', 'rt_reflect']
+rtKernels.each { kernel ->
+    tasks.register("compileRtShader_${kernel}", Exec) {
+        def src = file('src/main/rtshaders')
+        def out = file('src/main/resources/assets/pocortx/shaders/rt')
+        inputs.dir src
+        outputs.file new File(out, kernel + '.spv')
+        doFirst { out.mkdirs() }
+        commandLine 'glslangValidator', '--target-env', 'vulkan1.2', '-o', new File(out, kernel + '.spv').path, new File(src, kernel + '.comp').path
+    }
+}
+tasks.register('compileRtShaders') {
+    dependsOn rtKernels.collect { "compileRtShader_${it}" }
+}
+
 processResources {
     def modVersion = project.version
     inputs.property 'version', modVersion

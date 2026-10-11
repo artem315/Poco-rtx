@@ -1,0 +1,86 @@
+#version 460
+#extension GL_EXT_ray_query : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference_uvec2 : require
+#extension GL_GOOGLE_include_directive : require
+
+// Kernel 2/3: one bounce of diffuse global illumination, glow of emissive blocks and sun
+// specular highlights on opaque surfaces. Output: additive light (rgb).
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#include "rt_common.glsl"
+#include "rt_shared.glsl"
+
+layout(set = 0, binding = 8, rgba16f) uniform writeonly image2D oIndirect;
+layout(set = 0, binding = 9) uniform sampler2D gNormal;
+layout(set = 0, binding = 10) uniform sampler2D gAlbedo;
+layout(set = 0, binding = 11) uniform sampler2D gInfo;
+layout(set = 0, binding = 12) uniform sampler2D uLight;   // this frame's light output (sun visibility in g)
+
+// Light bounced towards a receiver from a surface hit by a diffuse ray.
+vec3 shadeBounce(Hit h, vec3 d, bool shadowRay) {
+    vec4 tex = textureLod(uAtlas, h.uv, F.quality.z);
+    vec3 albedo = tex.rgb * h.color.rgb;
+    Material m = material(h.uv);
+    vec3 pos = d * h.t;
+    float ndl = max(dot(h.n, F.light.xyz), 0.0);
+    float vis = 0.0;
+    if (ndl > 0.0 && F.light.w > 0.001) {
+        vis = shadowRay ? (traceAny(pos + h.n * 0.02, F.light.xyz, F.params.x, MASK_OPAQUE, false) ? 0.0 : 1.0)
+                        : smoothstep(0.85, 1.0, h.lm.y);
+    }
+    // Sunlit surfaces bounce the most; sky-lit ones bounce a little of the sky.
+    vec3 direct = F.lightColor.rgb * (F.light.w * ndl * vis * 1.6);
+    vec3 skyBounce = F.skyColor.rgb * (lightCurve(h.lm.y) * F.lightColor.w * 0.35);
+    vec3 blockLight = vec3(1.0, 0.75, 0.45) * lightCurve(h.lm.x) * 0.35;
+    float glow = m.emissive * F.params2.z * (m.id == MAT_GLOW_PARTIAL ? smoothstep(0.55, 0.85, luma(tex.rgb)) : 1.0);
+    return albedo * (direct + skyBounce + blockLight) + albedo * glow * 2.5;
+}
+
+void main() {
+    Pixel px;
+    if (!setupPixel(px)) {
+        return;
+    }
+    vec3 add = vec3(0.0);
+    if (!px.sky) {
+        Rng rng = makeRng(px.pix, 2u);
+        Surface s = readSurface(px, gNormal, gAlbedo, gInfo);
+        float fade = 1.0 - smoothstep(F.params.x * 0.85, F.params.x * 1.15, length(s.p));
+        vec3 origin = s.p + s.n * 0.02;
+        vec3 v = -px.viewDir;
+
+        if (F.toggles.z > 0.5) {
+            int n = int(F.counts.y);
+            vec3 gi = vec3(0.0);
+            for (int i = 0; i < n; i++) {
+                vec3 d = cosineDir(s.n, rng);
+                Hit h = traceClosest(origin, d, 24.0, MASK_OPAQUE, false);
+                if (h.hit) {
+                    gi += shadeBounce(h, d, F.quality.x > 0.5);
+                }
+            }
+            add += s.albedo * gi / float(max(n, 1)) * F.strength.z * fade;
+        }
+
+        if (s.mat.emissive > 0.0) {
+            float glow = s.mat.emissive * F.params2.z * (s.mat.id == MAT_GLOW_PARTIAL ? smoothstep(0.55, 0.85, luma(s.albedo)) : 1.0);
+            add += s.albedo * glow * 0.35;
+        }
+
+        float sunlit = texelFetch(uLight, px.pix, 0).g;
+        if (F.toggles2.x > 0.5 && F.light.w > 0.001 && sunlit > 0.0 && dot(s.n, F.light.xyz) > 0.0) {
+            float f0 = s.mat.metal ? 0.9 : s.mat.f0;
+            float spec = ggxSpecular(s.n, v, F.light.xyz, max(s.mat.roughness, 0.06)) * fresnel(f0, dot(normalize(v + F.light.xyz), v));
+            vec3 tint = s.mat.metal ? s.albedo : vec3(1.0);
+            add += F.lightColor.rgb * tint * (spec * sunlit * F.light.w * F.params3.z);
+        }
+    }
+    vec2 puv;
+    float alpha = temporalAlpha(px, puv);
+    if (alpha < 1.0) {
+        add = mix(textureLod(uHistory, puv, 0.0).rgb, add, alpha);
+    }
+    imageStore(oIndirect, px.pix, vec4(add, 1.0));
+}
