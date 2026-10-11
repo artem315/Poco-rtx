@@ -1,0 +1,127 @@
+#version 460
+#extension GL_EXT_ray_query : require
+#extension GL_EXT_buffer_reference : require
+#extension GL_EXT_buffer_reference_uvec2 : require
+#extension GL_GOOGLE_include_directive : require
+
+// Kernel 3/3: reflections on smooth materials, metals and puddles, and on water, glass and
+// ice in front of them, plus the sun glint on water. Output: premultiplied reflection
+// (rgb, already weighted) and the weight.
+
+layout(local_size_x = 8, local_size_y = 8) in;
+
+#include "rt_common.glsl"
+#include "rt_shared.glsl"
+
+layout(set = 0, binding = 8, rgba16f) uniform writeonly image2D oRefl;
+layout(set = 0, binding = 9) uniform sampler2D gNormal;
+layout(set = 0, binding = 10) uniform sampler2D gAlbedo;
+layout(set = 0, binding = 11) uniform sampler2D gInfo;
+
+// Radiance of a surface seen in a reflection: vanilla-like light plus ray traced sun shadow.
+vec3 shadeReflected(Hit h, vec3 d, bool shadowRay) {
+    float lod = clamp(log2(max(h.t, 1.0) * 0.05), 0.0, 3.0);
+    vec4 tex = textureLod(uAtlas, h.uv, lod);
+    vec3 albedo = tex.rgb * h.color.rgb;
+    Material m = material(h.uv);
+    vec3 pos = d * h.t;
+    float sky = lightCurve(h.lm.y) * F.lightColor.w;
+    float block = lightCurve(h.lm.x);
+    vec3 light = max(vec3(sky) * mix(vec3(1.0), F.skyColor.rgb * 1.4, 0.25), vec3(1.0, 0.82, 0.6) * block) + 0.03;
+    float facing = smoothstep(-0.05, 0.25, dot(h.n, F.light.xyz));
+    float vis = facing;
+    if (shadowRay && facing > 0.0) {
+        vis *= traceAny(pos + h.n * 0.02, F.light.xyz, F.params.x, MASK_OPAQUE, false) ? 0.0 : 1.0;
+    } else {
+        vis *= smoothstep(0.8, 1.0, h.lm.y);
+    }
+    float s = F.strength.y * F.light.w * h.lm.y;
+    light *= mix(1.0 - s, 1.0 + 0.2 * s, vis);
+    float glow = m.emissive * F.params2.z * (m.id == MAT_GLOW_PARTIAL ? smoothstep(0.55, 0.85, luma(tex.rgb)) : 1.0);
+    return albedo * light + albedo * glow * 1.5;
+}
+
+void main() {
+    Pixel px;
+    if (!setupPixel(px)) {
+        return;
+    }
+    vec4 outRefl = vec4(0.0);
+    float roughness = 1.0;
+    bool submerged = F.params3.w > 0.5;
+    bool alphaTest = F.params.w > 0.5;
+    bool reflShadows = F.quality.y > 0.5;
+    if (!px.sky && !submerged) {
+        Rng rng = makeRng(px.pix, 3u);
+        Surface s = readSurface(px, gNormal, gAlbedo, gInfo);
+        float fade = 1.0 - smoothstep(F.params.x * 0.85, F.params.x * 1.15, length(s.p));
+        vec3 v = -px.viewDir;
+
+        if (F.toggles.w > 0.5 && s.exact && s.mat.roughness < 0.6) {
+            float r = s.mat.roughness;
+            vec3 n = r > 0.02 ? normalize(mix(s.n, cosineDir(s.n, rng), r * r)) : s.n;
+            vec3 rd = reflect(px.viewDir, n);
+            if (dot(rd, s.n) < 0.0) {
+                rd = reflect(px.viewDir, s.n);
+            }
+            Hit h = traceClosest(s.p + s.n * 0.02, rd, F.params.x, MASK_OPAQUE | MASK_TRANSLUCENT, alphaTest);
+            vec3 col = h.hit ? shadeReflected(h, rd, reflShadows) : skyRadiance(rd) * smoothstep(0.3, 0.9, s.lm.y);
+            float f = fresnel(s.mat.metal ? 0.7 : s.mat.f0, dot(s.n, v));
+            float weight = clamp((s.mat.metal ? mix(0.35, 0.85, 1.0 - r) : f * (1.0 - r)) * F.strength.w * fade, 0.0, 1.0);
+            vec3 tint = s.mat.metal ? s.albedo * 1.4 : vec3(1.0);
+            outRefl = vec4(col * tint * weight, weight);
+            roughness = r;
+        }
+
+        // Water, glass and ice in front of the opaque surface.
+        if (px.fd > px.od + 1e-7) {
+            vec3 pf = worldPos(px.uv, px.fd);
+            float df = length(pf);
+            Hit th = traceClosest(vec3(0.0), pf / df, df * 1.02 + 0.3, MASK_TRANSLUCENT, true);
+            vec3 n;
+            int id = MAT_WATER;
+            vec2 lm = vec2(0.0, 1.0);
+            if (th.hit && abs(th.t - df) < max(0.1, df * 0.015)) {
+                pf = (pf / df) * th.t;
+                n = th.n;
+                Material tm = material(th.uv);
+                id = tm.id == MAT_DEFAULT ? MAT_GLASS : tm.id;
+                lm = th.lm;
+            } else {
+                n = depthNormal(px.fullPix, pf);
+            }
+            if (id == MAT_WATER) {
+                n = waterNormal(F.camera.xyz + pf, n);
+            }
+            float f = fresnel(id == MAT_WATER ? 0.02 : 0.04, dot(n, v));
+            vec3 rgb = vec3(0.0);
+            float weight = 0.0;
+            if (F.toggles.w > 0.5) {
+                vec3 rd = reflect(px.viewDir, n);
+                if (rd.y < 0.0 && id == MAT_WATER) {
+                    rd = normalize(vec3(rd.x, -rd.y * 0.3, rd.z));
+                }
+                Hit h = traceClosest(pf + n * 0.03, rd, F.params.x, MASK_OPAQUE, alphaTest);
+                vec3 col = h.hit ? shadeReflected(h, rd, reflShadows) : skyRadiance(rd) * smoothstep(0.2, 0.9, lm.y);
+                float fadeF = 1.0 - smoothstep(F.params.x * 0.85, F.params.x * 1.15, df);
+                weight = clamp((id == MAT_WATER ? f * 1.4 + 0.04 : f * 0.8) * F.strength.w * mix(0.5, 1.0, fadeF), 0.0, 1.0);
+                rgb = col * weight;
+            }
+            if (F.toggles2.x > 0.5 && F.light.w > 0.001) {
+                float vis = traceAny(pf + n * 0.03, F.light.xyz, F.params.x, MASK_OPAQUE | MASK_ENTITY, false) ? 0.0 : 1.0;
+                float spec = ggxSpecular(n, v, F.light.xyz, id == MAT_WATER ? 0.05 : 0.03) * f;
+                rgb += F.lightColor.rgb * (spec * vis * F.light.w * F.params3.z * 1.5);
+            }
+            outRefl = vec4(rgb, weight);
+            roughness = 0.0;
+        }
+    }
+    vec2 puv;
+    float alpha = temporalAlpha(px, puv);
+    if (alpha < 1.0) {
+        // Sharp reflections move with the view, so they keep less history.
+        float reflAlpha = mix(0.6, alpha, clamp(roughness * 2.0, 0.0, 1.0));
+        outRefl = mix(textureLod(uHistory, puv, 0.0), outRefl, reflAlpha);
+    }
+    imageStore(oRefl, px.pix, outRefl);
+}

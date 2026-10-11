@@ -304,7 +304,7 @@ public final class RtxRenderer {
             linearSampler = sampler(VK12.VK_FILTER_LINEAR, VK12.VK_SAMPLER_MIPMAP_MODE_NEAREST, 0.0f);
             atlasSampler = sampler(VK12.VK_FILTER_NEAREST, VK12.VK_SAMPLER_MIPMAP_MODE_NEAREST, 16.0f);
             for (int i = 0; i < RING; i++) {
-                traceUbo[i] = RtBuffer.create(ctx, TRACE_UBO_SIZE, VK12.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true, 256);
+                traceUbo[i] = RtBuffer.create(ctx, TRACE_UBO_SIZE, VK12.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, true, 0);
             }
             historyValid = false;
             LOGGER.info("PocoRTX: hardware ray tracing pipeline ready on '{}'", RtDeviceSupport.deviceName());

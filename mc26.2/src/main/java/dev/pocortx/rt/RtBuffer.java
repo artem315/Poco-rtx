@@ -17,17 +17,21 @@ public final class RtBuffer {
     public final long buffer;
     public final long allocation;
     public final long size;
+    /** Device address of the usable range (aligned as requested). */
     public final long address;
+    /** Where the usable range starts inside the VkBuffer; descriptors and AS creation must add it. */
+    public final long offset;
     public final long mapped;
     private final RtContext ctx;
     private boolean freed;
 
-    private RtBuffer(RtContext ctx, long buffer, long allocation, long size, long address, long mapped) {
+    private RtBuffer(RtContext ctx, long buffer, long allocation, long size, long address, long offset, long mapped) {
         this.ctx = ctx;
         this.buffer = buffer;
         this.allocation = allocation;
         this.size = size;
         this.address = address;
+        this.offset = offset;
         this.mapped = mapped;
     }
 
@@ -44,13 +48,17 @@ public final class RtBuffer {
             LongBuffer pBuffer = stack.callocLong(1);
             PointerBuffer pAlloc = stack.callocPointer(1);
             VmaAllocationInfo allocInfo = VmaAllocationInfo.calloc(stack);
-            int result = alignment > 1
-                    ? Vma.vmaCreateBufferWithAlignment(ctx.vma, info, alloc, alignment, pBuffer, pAlloc, allocInfo)
-                    : Vma.vmaCreateBuffer(ctx.vma, info, alloc, pBuffer, pAlloc, allocInfo);
+            // Room to align the start by hand: not every LWJGL version has vmaCreateBufferWithAlignment.
+            if (alignment > 1) {
+                info.size(size + alignment);
+            }
+            int result = Vma.vmaCreateBuffer(ctx.vma, info, alloc, pBuffer, pAlloc, allocInfo);
             RtContext.check(result, "vmaCreateBuffer(" + size + ")");
             long buffer = pBuffer.get(0);
             long address = VK12.vkGetBufferDeviceAddress(ctx.vk, VkBufferDeviceAddressInfo.calloc(stack).sType$Default().buffer(buffer));
-            return new RtBuffer(ctx, buffer, pAlloc.get(0), size, address, hostVisible ? allocInfo.pMappedData() : 0L);
+            long offset = alignment > 1 ? (alignment - address % alignment) % alignment : 0L;
+            long mapped = hostVisible ? allocInfo.pMappedData() + offset : 0L;
+            return new RtBuffer(ctx, buffer, pAlloc.get(0), size, address + offset, offset, mapped);
         }
     }
 
@@ -63,7 +71,7 @@ public final class RtBuffer {
 
     /** Makes host writes visible to the device on memory that is not host coherent. */
     public void flush(long offset, long length) {
-        Vma.vmaFlushAllocation(ctx.vma, allocation, offset, length);
+        Vma.vmaFlushAllocation(ctx.vma, allocation, this.offset + offset, length);
     }
 
     /** Frees the buffer once the frames that may still read it have finished. */

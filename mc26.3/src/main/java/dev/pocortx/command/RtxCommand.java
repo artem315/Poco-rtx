@@ -5,10 +5,13 @@ import static net.fabricmc.fabric.api.client.command.v2.ClientCommands.literal;
 
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.BoolArgumentType;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.context.CommandContext;
 import dev.pocortx.config.RtxConfig;
 import dev.pocortx.gui.RtxSettingsScreen;
+import dev.pocortx.gui.ShaderSettingsScreen;
+import dev.pocortx.rt.RtDeviceSupport;
 import dev.pocortx.render.RtxRenderer;
 import java.util.Locale;
 import java.util.function.BiConsumer;
@@ -59,10 +62,25 @@ public final class RtxCommand {
 
         root.then(toggle("ao", "pocortx.option.ao", (c, v) -> c.ambientOcclusion = v));
         root.then(toggle("shadows", "pocortx.option.shadows", (c, v) -> c.shadows = v));
+        root.then(toggle("gi", "pocortx.option.gi", (c, v) -> c.globalIllumination = v));
         root.then(toggle("reflections", "pocortx.option.reflections", (c, v) -> c.reflections = v));
-        root.then(toggle("shafts", "pocortx.option.shafts", (c, v) -> c.lightShafts = v));
+        root.then(toggle("specular", "pocortx.option.specular", (c, v) -> c.specular = v));
+        root.then(toggle("volumetric", "pocortx.option.volumetric", (c, v) -> c.volumetricLight = v));
         root.then(toggle("puddles", "pocortx.option.puddles", (c, v) -> c.rainPuddles = v));
         root.then(toggle("waves", "pocortx.option.waves", (c, v) -> c.waterWaves = v));
+        root.then(toggle("shaders", "pocortx.shader.enabled", (c, v) -> c.shader.enabled = v));
+        root.then(literal("shadermenu").executes(ctx -> {
+            Minecraft client = ctx.getSource().getClient();
+            client.execute(() -> client.gui.setScreen(new ShaderSettingsScreen(null)));
+            return 1;
+        }));
+        root.then(literal("distance").then(argument("chunks", IntegerArgumentType.integer(2, 8)).executes(ctx -> {
+            RtxConfig.get().rtDistance = IntegerArgumentType.getInteger(ctx, "chunks");
+            RtxConfig.save();
+            ctx.getSource().sendFeedback(Component.translatable("pocortx.msg.option", Component.translatable("pocortx.option.rt_distance"),
+                    Component.translatable("pocortx.value.chunks", RtxConfig.get().rtDistance)));
+            return 1;
+        })));
 
         dispatcher.register(root);
     }
@@ -97,9 +115,15 @@ public final class RtxCommand {
     private static int status(CommandContext<FabricClientCommandSource> ctx) {
         RtxConfig c = RtxConfig.get();
         FabricClientCommandSource source = ctx.getSource();
+        String reason = RtDeviceSupport.unavailableReason();
+        source.sendFeedback(reason == null
+                ? Component.translatable("pocortx.rt.status.ok", RtDeviceSupport.deviceName())
+                : Component.translatable("pocortx.rt.status.off", Component.translatable(reason)));
         source.sendFeedback(Component.translatable("pocortx.msg.status",
-                onOff(c.enabled), qualityName(c.quality),
-                onOff(c.ambientOcclusion), onOff(c.shadows), onOff(c.reflections), onOff(c.lightShafts), onOff(c.rainPuddles)));
+                onOff(c.enabled), qualityName(c.quality), c.rtDistance,
+                onOff(c.shadows), onOff(c.ambientOcclusion), onOff(c.globalIllumination), onOff(c.reflections),
+                onOff(c.specular), onOff(c.volumetricLight), onOff(c.shader.enabled),
+                RtxRenderer.INSTANCE.traceSections(), RtxRenderer.INSTANCE.traceInstances()));
         if (RtxRenderer.INSTANCE.hasFailed()) {
             source.sendError(Component.translatable("pocortx.msg.failed", RtxRenderer.INSTANCE.failureReason()));
         }

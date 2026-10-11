@@ -96,7 +96,7 @@ public final class RtCompute {
         }
 
         public Bindings buffer(int binding, RtBuffer buffer, long offset, long range) {
-            writes.get(binding).pBufferInfo(VkDescriptorBufferInfo.calloc(1, stack).buffer(buffer.buffer).offset(offset).range(range));
+            writes.get(binding).pBufferInfo(VkDescriptorBufferInfo.calloc(1, stack).buffer(buffer.buffer).offset(buffer.offset + offset).range(range));
             return this;
         }
 

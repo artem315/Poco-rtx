@@ -5,9 +5,17 @@
   "compatibilityLevel": "JAVA_21",
   "client": [
     "GameRendererMixin",
-    "LevelRendererMixin"
+    "LevelRendererMixin",
+    "SectionCompilerMixin",
+    "StagedVertexBufferDrawMixin",
+    "TextureAtlasMixin",
+    "VideoSettingsScreenMixin",
+    "vulkan.GpuDeviceAccessor",
+    "vulkan.VulkanCommandEncoderAccessor",
+    "vulkan.VulkanConstMixin",
+    "vulkan.VulkanFeatureSetsMixin"
   ],
   "injectors": {
-    "defaultRequire": 0
+    "defaultRequire": 1
   }
 }

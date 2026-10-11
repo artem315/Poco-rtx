@@ -380,7 +380,7 @@ public final class RtScene {
                 pendingBuilds.remove(0);
                 if (opaque != null) {
                     RtBuffer storage = RtBuffer.create(ctx, opaque.sizes.accelerationStructureSize(),
-                            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, false, 256);
+                            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, false, 0);
                     s.blasOpaque = createAs(stack, storage, opaque.sizes.accelerationStructureSize(), VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
                     s.blasOpaqueBuffer = storage;
                     s.blasOpaqueAddress = ctx.asDeviceAddress(s.blasOpaque);
@@ -391,7 +391,7 @@ public final class RtScene {
                 }
                 if (translucent != null) {
                     RtBuffer storage = RtBuffer.create(ctx, translucent.sizes.accelerationStructureSize(),
-                            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, false, 256);
+                            VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, false, 0);
                     s.blasTranslucent = createAs(stack, storage, translucent.sizes.accelerationStructureSize(), VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
                     s.blasTranslucentBuffer = storage;
                     s.blasTranslucentAddress = ctx.asDeviceAddress(s.blasTranslucent);
@@ -469,7 +469,7 @@ public final class RtScene {
                 if (entityScratch != null) {
                     entityScratch.freeLater();
                 }
-                entityBlasBuffer = RtBuffer.create(ctx, sizes.accelerationStructureSize(), VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, false, 256);
+                entityBlasBuffer = RtBuffer.create(ctx, sizes.accelerationStructureSize(), VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, false, 0);
                 entityBlas = createAs(stack, entityBlasBuffer, sizes.accelerationStructureSize(), VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR);
                 entityBlasAddress = ctx.asDeviceAddress(entityBlas);
                 entityScratch = RtBuffer.create(ctx, sizes.buildScratchSize() + ctx.scratchAlignment, VK12.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, false,
@@ -618,7 +618,7 @@ public final class RtScene {
                 vkGetAccelerationStructureBuildSizesKHR(ctx.vk, VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR, info.get(0),
                         stack.ints(instanceCapacity), sizes);
                 freeTlas();
-                tlasBuffer = RtBuffer.create(ctx, sizes.accelerationStructureSize(), VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, false, 256);
+                tlasBuffer = RtBuffer.create(ctx, sizes.accelerationStructureSize(), VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR, false, 0);
                 tlas = createAs(stack, tlasBuffer, sizes.accelerationStructureSize(), VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR);
                 tlasScratch = RtBuffer.create(ctx, sizes.buildScratchSize() + ctx.scratchAlignment, VK12.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, false,
                         ctx.scratchAlignment);
@@ -663,7 +663,7 @@ public final class RtScene {
     private long createAs(MemoryStack stack, RtBuffer storage, long size, int type) {
         LongBuffer handle = stack.mallocLong(1);
         RtContext.check(vkCreateAccelerationStructureKHR(ctx.vk, VkAccelerationStructureCreateInfoKHR.calloc(stack).sType$Default()
-                .buffer(storage.buffer).offset(0).size(size).type(type), null, handle), "vkCreateAccelerationStructureKHR");
+                .buffer(storage.buffer).offset(storage.offset).size(size).type(type), null, handle), "vkCreateAccelerationStructureKHR");
         return handle.get(0);
     }
 
@@ -688,7 +688,7 @@ public final class RtScene {
                 tableRing[i].freeLater();
             }
             instanceRing[i] = RtBuffer.create(ctx, (long) capacity * INSTANCE_SIZE,
-                    VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, true, 16);
+                    VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR, true, 0);
             tableRing[i] = RtBuffer.create(ctx, (long) capacity * ENTRY_SIZE, VK12.VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, true, 0);
         }
         instanceCapacity = capacity;

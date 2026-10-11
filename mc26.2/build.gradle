@@ -36,6 +36,9 @@ rtKernels.each { kernel ->
 tasks.register('compileRtShaders') {
     dependsOn rtKernels.collect { "compileRtShader_${it}" }
 }
+tasks.named('processResources') {
+    mustRunAfter rtKernels.collect { "compileRtShader_${it}" }
+}
 
 processResources {
     def modVersion = project.version
