@@ -1,0 +1,83 @@
+plugins {
+    id 'fabric-loom' version '1.16.3'
+}
+
+version = "${project.mod_version}+mc${project.minecraft_version}"
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    maven { name = 'Terraformers'; url = 'https://maven.terraformersmc.com/' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    mappings "net.fabricmc:yarn:${project.yarn_mappings}:v2"
+    modImplementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
+    modCompileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+}
+
+processResources {
+    def modVersion = project.version
+    inputs.property 'version', modVersion
+    filesMatching('fabric.mod.json') {
+        expand 'version': modVersion
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+
+// Dev-only harness that drives a real client and saves comparison screenshots.
+// It is not part of the shipped jar.
+sourceSets {
+    testmod {
+        compileClasspath += main.compileClasspath + main.output
+        runtimeClasspath += main.runtimeClasspath + main.output
+    }
+}
+
+loom {
+    mods {
+        pocortx {
+            sourceSet sourceSets.main
+        }
+        pocortx_autotest {
+            sourceSet sourceSets.testmod
+        }
+    }
+    runs {
+        autotest {
+            client()
+            name = 'Autotest Client'
+            source sourceSets.testmod
+            runDir = 'run-autotest'
+            programArgs '--quickPlaySingleplayer', 'rtxtest', '--width', '960', '--height', '540'
+            vmArgs '-Dpocortx.autotest=true'
+        }
+        server {
+            runDir = 'run-server'
+        }
+    }
+}
+
+// ./gradlew runAutotest -PwithSodium : checks the passes alongside Sodium.
+if (project.hasProperty('withSodium')) {
+    repositories {
+        maven { name = 'Modrinth'; url = 'https://api.modrinth.com/maven' }
+    }
+    dependencies {
+        modLocalRuntime 'maven.modrinth:sodium:mc1.21.1-0.6.13-fabric'
+    }
+}

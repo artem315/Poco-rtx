@@ -1,0 +1,24 @@
+{
+    "vertex": "pocortx_fullscreen",
+    "fragment": "pocortx_reflect",
+    "samplers": [
+        { "name": "OpaqueSampler" },
+        { "name": "FinalSampler" },
+        { "name": "SceneSampler" }
+    ],
+    "uniforms": [
+        { "name": "RtxProj", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "RtxInvProj", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "RtxView", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "RtxInvView", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "RtxScreen", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },
+        { "name": "LightDir", "type": "float", "count": 3, "values": [ 0.0, 1.0, 0.0 ] },
+        { "name": "SunColor", "type": "float", "count": 3, "values": [ 1.0, 1.0, 1.0 ] },
+        { "name": "SkyColor", "type": "float", "count": 3, "values": [ 0.5, 0.7, 1.0 ] },
+        { "name": "FogColor", "type": "float", "count": 3, "values": [ 0.7, 0.8, 1.0 ] },
+        { "name": "CameraPos", "type": "float", "count": 3, "values": [ 0.0, 64.0, 0.0 ] },
+        { "name": "ReflParams", "type": "float", "count": 4, "values": [ 24.0, 64.0, 0.0, 1.0 ] },
+        { "name": "ReflParams2", "type": "float", "count": 4, "values": [ 0.0, 192.0, 192.0, 1.0 ] },
+        { "name": "ReflToggles", "type": "float", "count": 4, "values": [ 1.0, 0.7, 1.0, 0.0 ] }
+    ]
+}

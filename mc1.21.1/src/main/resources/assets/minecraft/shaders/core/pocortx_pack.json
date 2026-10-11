@@ -1,0 +1,9 @@
+{
+    "vertex": "pocortx_fullscreen",
+    "fragment": "pocortx_pack",
+    "samplers": [
+        { "name": "DepthSampler" }
+    ],
+    "uniforms": [
+    ]
+}
