@@ -1,0 +1,42 @@
+{
+  "key.categories.pocortx": "PocoRTX",
+  "key.pocortx.toggle": "Toggle ray tracing",
+  "key.pocortx.settings": "Ray tracing settings",
+
+  "pocortx.settings.title": "PocoRTX - Ray Tracing",
+  "pocortx.option.enabled": "Ray tracing",
+  "pocortx.option.quality": "Quality",
+  "pocortx.option.ao": "Ambient occlusion",
+  "pocortx.option.ao_strength": "AO strength: %s",
+  "pocortx.option.shadows": "Sun shadows",
+  "pocortx.option.shadow_strength": "Shadow strength: %s",
+  "pocortx.option.reflections": "Reflections",
+  "pocortx.option.reflection_strength": "Reflection strength: %s",
+  "pocortx.option.shafts": "Light shafts",
+  "pocortx.option.shaft_strength": "Light shaft strength: %s",
+  "pocortx.option.puddles": "Rain puddles",
+  "pocortx.option.waves": "Water waves",
+  "pocortx.option.debug": "Debug view",
+  "pocortx.option.reset": "Reset to defaults",
+
+  "pocortx.quality.low": "Low",
+  "pocortx.quality.medium": "Medium",
+  "pocortx.quality.high": "High",
+  "pocortx.quality.ultra": "Ultra",
+
+  "pocortx.debug.off": "Off",
+  "pocortx.debug.ao": "AO",
+  "pocortx.debug.shadows": "Shadows",
+  "pocortx.debug.reflections": "Reflections",
+  "pocortx.debug.light_shafts": "Light shafts",
+
+  "pocortx.msg.enabled": "PocoRTX: ray tracing ON",
+  "pocortx.msg.disabled": "PocoRTX: ray tracing OFF",
+  "pocortx.msg.quality": "PocoRTX: quality set to %s",
+  "pocortx.msg.debug": "PocoRTX: debug view %s",
+  "pocortx.msg.option": "PocoRTX: %s - %s",
+  "pocortx.msg.reset": "PocoRTX: settings reset",
+  "pocortx.msg.failed": "PocoRTX turned itself off: %s. Try another renderer in the launcher (LTW, MobileGlues or Zink) and press F3+T.",
+  "pocortx.msg.status": "PocoRTX: %s | quality %s | AO %s | shadows %s | reflections %s | shafts %s | puddles %s",
+  "pocortx.msg.help": "/rtx on|off, /rtx quality low|medium|high|ultra, /rtx menu, /rtx ao|shadows|reflections|shafts|puddles|waves true|false, /rtx debug ..., /rtx reset"
+}

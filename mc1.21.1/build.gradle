@@ -75,7 +75,12 @@ loom {
 // ./gradlew runAutotest -PwithSodium : checks the passes alongside Sodium.
 if (project.hasProperty('withSodium')) {
     repositories {
-        maven { name = 'Modrinth'; url = 'https://api.modrinth.com/maven' }
+        exclusiveContent {
+            forRepository {
+                maven { name = 'Modrinth'; url = 'https://api.modrinth.com/maven' }
+            }
+            filter { includeGroup 'maven.modrinth' }
+        }
     }
     dependencies {
         modLocalRuntime 'maven.modrinth:sodium:mc1.21.1-0.6.13-fabric'
