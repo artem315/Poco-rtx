@@ -15,6 +15,7 @@ in vec2 texCoord;
 out vec4 fragColor;
 
 float linearDist(vec2 uv) {
+    uv = rtxSnapUV(uv);
     float d = rtxOpaqueDepth(uv);
     return d >= RTX_SKY_DEPTH ? 100000.0 : -rtxViewPos(uv, d).z;
 }

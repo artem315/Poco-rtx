@@ -1,0 +1,71 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version "${loom_version}"
+}
+
+version = "${project.mod_version}+mc${project.minecraft_version}"
+group = project.maven_group
+
+base {
+    archivesName = project.archives_base_name
+}
+
+repositories {
+    maven { name = 'Terraformers'; url = 'https://maven.terraformersmc.com/' }
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${project.minecraft_version}"
+    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
+    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
+    compileOnly "com.terraformersmc:modmenu:${project.modmenu_version}"
+}
+
+processResources {
+    def modVersion = project.version
+    inputs.property 'version', modVersion
+    filesMatching('fabric.mod.json') {
+        expand 'version': modVersion
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 25
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+// Dev-only harness that drives a real client and saves comparison screenshots.
+// It is not part of the shipped jar.
+sourceSets {
+    testmod {
+        compileClasspath += main.compileClasspath + main.output
+        runtimeClasspath += main.runtimeClasspath + main.output
+    }
+}
+
+loom {
+    mods {
+        pocortx {
+            sourceSet sourceSets.main
+        }
+        pocortx_autotest {
+            sourceSet sourceSets.testmod
+        }
+    }
+    runs {
+        autotest {
+            client()
+            name = 'Autotest Client'
+            source sourceSets.testmod
+            runDir = 'run-autotest'
+            programArgs '--quickPlaySingleplayer', 'rtxtest', '--width', '960', '--height', '540'
+            vmArgs '-Dpocortx.autotest=true'
+        }
+        server {
+            runDir = 'run-server'
+        }
+    }
+}

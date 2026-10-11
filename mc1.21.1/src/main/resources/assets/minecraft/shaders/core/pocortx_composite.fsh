@@ -45,8 +45,9 @@ void main() {
         vec2 off = vec2(float(i == 1 || i == 3), float(i >= 2));
         vec2 tuv = (base + off + 0.5) / TraceSize;
         float bw = (off.x > 0.5 ? fr.x : 1.0 - fr.x) * (off.y > 0.5 ? fr.y : 1.0 - fr.y) + 1e-4;
-        float lw = bw * depthWeight(linearDist(tuv, rtxOpaqueDepth(tuv)), oz);
-        float rw = bw * depthWeight(linearDist(tuv, rtxFinalDepth(tuv)), fz);
+        vec2 duv = rtxSnapUV(tuv);
+        float lw = bw * depthWeight(linearDist(duv, rtxOpaqueDepth(duv)), oz);
+        float rw = bw * depthWeight(linearDist(duv, rtxFinalDepth(duv)), fz);
         light += texture(LightSampler, tuv) * lw;
         refl += texture(ReflSampler, tuv) * rw;
         lightW += lw;

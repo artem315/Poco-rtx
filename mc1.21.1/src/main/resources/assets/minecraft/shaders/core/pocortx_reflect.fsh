@@ -131,12 +131,13 @@ float traceReflection(vec3 origin, vec3 dir, float noise, out vec2 hitUV) {
 }
 
 void main() {
-    float fd = rtxFinalDepth(texCoord);
+    vec2 uv = rtxSnapUV(texCoord);
+    float fd = rtxFinalDepth(uv);
     if (fd >= RTX_SKY_DEPTH) {
         fragColor = vec4(0.0);
         return;
     }
-    vec3 p = rtxViewPos(texCoord, fd);
+    vec3 p = rtxViewPos(uv, fd);
     float dist = length(p);
     float fade = 1.0 - smoothstep(ReflParams2.z * 0.6, ReflParams2.z * 0.95, dist);
     if (fade <= 0.0) {
@@ -144,10 +145,10 @@ void main() {
         return;
     }
 
-    float od = rtxOpaqueDepth(texCoord);
-    bool translucent = od >= RTX_SKY_DEPTH || (-rtxViewPos(texCoord, od).z) - (-p.z) > 0.05;
+    float od = rtxOpaqueDepth(uv);
+    bool translucent = od >= RTX_SKY_DEPTH || (-rtxViewPos(uv, od).z) - (-p.z) > 0.05;
 
-    vec3 n = rtxNormal(texCoord, p, false);
+    vec3 n = rtxNormal(uv, p, false);
     vec3 nw = rtxSnapWorldNormal(rtxToWorldDir(n));
     vec3 wp = rtxToWorldDir(p) + CameraPos;
 

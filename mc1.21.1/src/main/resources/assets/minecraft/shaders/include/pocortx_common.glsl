@@ -43,6 +43,12 @@ vec3 rtxProject(vec3 viewPos) {
     return (c.xyz / c.w) * 0.5 + 0.5;
 }
 
+// Reduced-resolution passes land exactly between full-resolution depth texels;
+// snap to a texel centre so neighbour fetches never alias the centre fetch.
+vec2 rtxSnapUV(vec2 uv) {
+    return (floor(uv * RtxScreen) + 0.5) / RtxScreen;
+}
+
 bool rtxOnScreen(vec2 uv) {
     return uv.x >= 0.0 && uv.y >= 0.0 && uv.x <= 1.0 && uv.y <= 1.0;
 }

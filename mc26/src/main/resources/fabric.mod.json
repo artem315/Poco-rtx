@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "id": "pocortx",
+  "version": "${version}",
+  "name": "PocoRTX",
+  "description": "Screen-space ray tracing for phones: ray traced ambient occlusion, sun shadows, light shafts and reflections on water, glass and rain puddles. Built for MJ Launcher / Pojav-based launchers (tuned for POCO X8 Pro Max). Works on the OpenGL and Vulkan backends. Commands: /rtx",
+  "authors": ["artem315"],
+  "contact": {
+    "sources": "https://github.com/artem315/Poco-rtx"
+  },
+  "icon": "assets/pocortx/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.pocortx.PocoRtx"],
+    "modmenu": ["dev.pocortx.compat.ModMenuCompat"]
+  },
+  "mixins": [
+    "pocortx.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.0",
+    "minecraft": "~26.3",
+    "java": ">=25",
+    "fabric-api": "*"
+  },
+  "suggests": {
+    "modmenu": "*"
+  }
+}

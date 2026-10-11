@@ -131,17 +131,18 @@ float lightShafts(vec2 uv, float noise) {
 }
 
 void main() {
+    vec2 uv = rtxSnapUV(texCoord);
     float noise = rtxNoise(gl_FragCoord.xy);
-    float shafts = (Toggles.z > 0.5 && LightParams.x > 0.001) ? lightShafts(texCoord, noise) : 0.0;
+    float shafts = (Toggles.z > 0.5 && LightParams.x > 0.001) ? lightShafts(uv, noise) : 0.0;
 
-    float depth = rtxOpaqueDepth(texCoord);
+    float depth = rtxOpaqueDepth(uv);
     if (depth >= RTX_SKY_DEPTH) {
         fragColor = vec4(1.0, 1.0, shafts, 1.0);
         return;
     }
 
-    vec3 p = rtxViewPos(texCoord, depth);
-    vec3 n = rtxNormal(texCoord, p, true);
+    vec3 p = rtxViewPos(uv, depth);
+    vec3 n = rtxNormal(uv, p, true);
     n = rtxToViewDir(rtxSnapWorldNormal(rtxToWorldDir(n)));
 
     float ao = Toggles.x > 0.5 ? computeAO(p, n, noise) : 1.0;
