@@ -7,6 +7,7 @@
     ],
     "uniforms": [
         { "name": "RtxInvProj", "type": "matrix4x4", "count": 16, "values": [ 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0 ] },
+        { "name": "RtxScreen", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] },
         { "name": "TraceSize", "type": "float", "count": 2, "values": [ 1.0, 1.0 ] }
     ]
 }

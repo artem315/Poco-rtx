@@ -287,6 +287,7 @@ public final class RtxRenderer {
     private void runBlurPass() {
         ShaderProgram p = blurProgram;
         set(p, "RtxInvProj", invProj);
+        set(p, "RtxScreen", opaqueTarget.textureWidth, opaqueTarget.textureHeight);
         set(p, "TraceSize", lightTarget.textureWidth, lightTarget.textureHeight);
         p.addSampler("OpaqueSampler", opaqueTarget.getColorAttachment());
         p.addSampler("LightSampler", lightTarget.getColorAttachment());
@@ -321,6 +322,7 @@ public final class RtxRenderer {
         RtxConfig config = RtxConfig.get();
         ShaderProgram p = compositeProgram;
         set(p, "RtxInvProj", invProj);
+        set(p, "RtxScreen", opaqueTarget.textureWidth, opaqueTarget.textureHeight);
         p.addSampler("OpaqueSampler", opaqueTarget.getColorAttachment());
         p.addSampler("FinalSampler", finalTarget.getColorAttachment());
         p.addSampler("LightSampler", blurTarget.getColorAttachment());
