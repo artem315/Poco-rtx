@@ -61,6 +61,7 @@ void main() {
     vec4 light = vec4(0.0);
     vec3 gi = vec3(0.0);
     vec4 info = vec4(0.0);
+    float entityWeight = 0.0;
     float wsum = 0.0;
     vec4 refl = vec4(0.0);
     float rsum = 0.0;
@@ -71,7 +72,8 @@ void main() {
         float bw = (off.x > 0.5 ? fr.x : 1.0 - fr.x) * (off.y > 0.5 ? fr.y : 1.0 - fr.y) + 1e-3;
         vec4 tLight = texture(LightSampler, tuv);
         vec4 tInfo = texture(InfoSampler, tuv);
-        bool valid = int(tInfo.a * 255.0 + 0.5) != RTX_MAT_NONE;
+        int tId = int(tInfo.a * 255.0 + 0.5);
+        bool valid = tId != RTX_MAT_NONE;
         vec3 tn = (RtxViewRot * vec4(texture(NormalSampler, tuv).xyz, 0.0)).xyz;
         float nw = pow(max(dot(tn, nView), 0.0), 8.0) + 0.002;
         // The light buffer keeps the view depth of each trace pixel's surface in alpha.
@@ -80,6 +82,7 @@ void main() {
         light += tLight * w;
         gi += texture(IndirectSampler, tuv).rgb * w;
         info += tInfo * w;
+        entityWeight += (tId & 63) == RTX_MAT_ENTITY ? w : 0.0;
         wsum += w;
         // Reflections belong to the front surface: water and glass when there is one.
         float rw = bw * (behindTranslucent ? rtxDepthWeight(rtxLinear(rtxSnapUV(tuv), texture(FinalDepthSampler, rtxSnapUV(tuv)).r), fz) : dw);
@@ -100,7 +103,7 @@ void main() {
         vec2 lm = info.rg;
         float vis = mix(1.0, light.g, RtxStrength.y);
         float ao = mix(1.0, light.r, RtxStrength.x);
-        bool entity = info.a * 255.0 > float(RTX_MAT_ENTITY) - 0.5 && info.a * 255.0 < float(RTX_MAT_ENTITY) + 0.5;
+        bool entity = entityWeight > 0.5 * wsum;
         vec3 vanilla = max(rtxVanillaLight(lm), vec3(0.02));
         // Bounced light is noisy: in dark places it must not be divided by an almost black
         // vanilla light level, or the noise is amplified many times over.
@@ -132,6 +135,18 @@ void main() {
         debugColor = vec3(volumetric * 4.0);
     } else if (debugView == 6) {
         debugColor = ratio * 0.5;
+    } else if (debugView == 7) {
+        // How the primary ray of the nearest trace pixel found the surface: red none, magenta
+        // through a joint (back face), yellow on the retry; grey frame where everything matched.
+        int id = int(texelFetch(InfoSampler, ivec2(texCoord * RtxScreen.zw), 0).a * 255.0 + 0.5);
+        int diag = id == RTX_MAT_NONE ? 0 : id >> 6;
+        vec3 base = vec3(dot(texelFetch(SceneSampler, pix, 0).rgb, vec3(0.3, 0.59, 0.11)) * 0.5);
+        bool inRange = !sky && length(vp) < RtxParams.y;
+        debugColor = !inRange ? base * 0.5
+                : id == RTX_MAT_NONE ? vec3(1.0, 0.1, 0.1)
+                : diag == 2 ? vec3(1.0, 0.2, 1.0)
+                : diag == 1 ? vec3(1.0, 0.9, 0.1)
+                : base;
     }
 
     vec3 scene = texelFetch(SceneSampler, pix, 0).rgb;

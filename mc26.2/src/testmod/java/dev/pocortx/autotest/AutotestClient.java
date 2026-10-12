@@ -219,6 +219,7 @@ public final class AutotestClient implements ClientModInitializer {
             setRtx(true, RtxConfig.DebugView.OFF);
         }));
         steps.add(new Step(30, "crack_t14200_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
+        steps.add(new Step(30, "crack_t14200_diag", c -> setRtx(true, RtxConfig.DebugView.DIAGNOSTICS)));
 
         // Closest to the phone screenshot: two block columns standing from the sea floor to above
         // the water, a ledge next to them whose edge also goes down to the floor, camera above
@@ -246,6 +247,35 @@ public final class AutotestClient implements ClientModInitializer {
             }));
         }
         steps.add(new Step(30, "column_t21500_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
+        steps.add(new Step(30, "column_t21500_diag", c -> setRtx(true, RtxConfig.DebugView.DIAGNOSTICS)));
+
+        // The blocks on the phone screenshot: an andesite column and, next to it, a lighter smooth
+        // block column standing one block closer to the camera, so its narrow side face is seen
+        // almost edge-on; both go down to the sea floor. Ledge alongside, moon at several places.
+        String seamView = "tp @a 88.6 -57.6 3.4 0 24";
+        steps.add(new Step(80, "seam_t13600", c -> {
+            run(c, "fill 76 -64 -6 100 -50 20 air");
+            run(c, "fill 76 -64 -6 100 -64 20 stone");
+            run(c, "fill 76 -63 -6 100 -61 20 water");
+            run(c, "fill 76 -63 9 100 -62 20 sandstone");
+            run(c, "fill 76 -61 9 100 -61 20 sand");
+            run(c, "fill 90 -63 8 94 -61 8 smooth_stone");
+            run(c, "fill 90 -60 8 94 -60 8 smooth_stone_slab");
+            run(c, "fill 89 -63 8 89 -60 8 andesite");
+            run(c, "fill 88 -63 7 88 -60 8 polished_diorite");
+            run(c, "fill 84 -63 8 87 -61 8 sandstone");
+            run(c, "weather clear");
+            run(c, "time set 13600");
+            run(c, seamView);
+            setRtx(true, RtxConfig.DebugView.OFF);
+        }));
+        for (int time : new int[] {15000, 16500, 18000, 19500, 21000, 22500}) {
+            steps.add(new Step(50, "seam_t" + time, c -> {
+                run(c, "time set " + time);
+                setRtx(true, RtxConfig.DebugView.OFF);
+            }));
+        }
+        steps.add(new Step(30, "seam_t22500_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
 
         // The new screens: Video Settings with the two buttons, then RTX and shader settings.
         steps.add(new Step(20, "ui_video", c -> c.gui.setScreen(

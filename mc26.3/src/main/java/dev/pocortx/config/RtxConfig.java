@@ -58,7 +58,7 @@ public final class RtxConfig {
     }
 
     public enum DebugView {
-        OFF, AO, SHADOWS, GI, REFLECTIONS, VOLUMETRIC, LIGHTING;
+        OFF, AO, SHADOWS, GI, REFLECTIONS, VOLUMETRIC, LIGHTING, DIAGNOSTICS;
 
         public DebugView next() {
             DebugView[] values = values();

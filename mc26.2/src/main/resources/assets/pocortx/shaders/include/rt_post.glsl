@@ -22,6 +22,8 @@ uniform sampler2D OpaqueDepthSampler;
 
 const int RTX_MAT_ENTITY = 7;
 const int RTX_MAT_NONE = 255;
+// Bits 6-7 of the G-buffer id: 1 = found by the retry ray, 2 = the view ray hit the back of a
+// solid face first (it slipped through a joint between faces).
 
 float rtxNdcZ(float d) {
     return RtxDepth.x > 0.5 ? d : d * 2.0 - 1.0;

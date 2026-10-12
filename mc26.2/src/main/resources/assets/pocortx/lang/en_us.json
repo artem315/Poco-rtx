@@ -67,6 +67,7 @@
   "pocortx.debug.reflections": "Reflections",
   "pocortx.debug.volumetric": "Volumetric",
   "pocortx.debug.lighting": "Lighting",
+  "pocortx.debug.diagnostics": "Diagnostics",
   "pocortx.shader.enabled": "Shader Effects",
   "pocortx.shader.enabled.tooltip": "BSL-style colour grading, bloom, vignette and sharpening. Works on OpenGL and Vulkan.",
   "pocortx.shader.tonemap": "Tonemapping",

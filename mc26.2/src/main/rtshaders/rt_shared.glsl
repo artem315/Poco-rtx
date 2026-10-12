@@ -76,7 +76,8 @@ Surface readSurface(Pixel px, sampler2D gNormal, sampler2D gAlbedo, sampler2D gI
     s.mat.f0 = s.mat.metal ? 1.0 : b.a;
     s.lm = c.rg;
     s.mat.emissive = c.b;
-    s.mat.id = int(c.a * 255.0 + 0.5);
+    int id = int(c.a * 255.0 + 0.5);
+    s.mat.id = id == MAT_NONE ? MAT_NONE : id & 63;
     return s;
 }
 

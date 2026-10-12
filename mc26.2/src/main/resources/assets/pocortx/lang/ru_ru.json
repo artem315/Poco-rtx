@@ -67,6 +67,7 @@
   "pocortx.debug.reflections": "Отражения",
   "pocortx.debug.volumetric": "Объёмный свет",
   "pocortx.debug.lighting": "Освещение",
+  "pocortx.debug.diagnostics": "Диагностика",
   "pocortx.shader.enabled": "Эффекты шейдеров",
   "pocortx.shader.enabled.tooltip": "Цветокоррекция, bloom, виньетка и резкость в стиле BSL. Работает на OpenGL и Vulkan.",
   "pocortx.shader.tonemap": "Тонмаппинг",

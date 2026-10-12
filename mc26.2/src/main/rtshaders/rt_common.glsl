@@ -63,6 +63,9 @@ const int MAT_GEM = 5;
 const int MAT_GLOW_PARTIAL = 6;
 const int MAT_ENTITY = 7;       // G-buffer only: mobs and block entities (no baked face shading)
 const int MAT_NONE = 255;       // G-buffer only: no ray traced surface for this pixel
+// G-buffer only, bits 6-7 of the id: how the primary ray found the surface (diagnostics view).
+const int DIAG_RETRY = 1;       // the view ray missed the rasterised surface, the retry found it
+const int DIAG_BACKFACE = 2;    // the view ray hit the back of a solid face (slipped through a joint)
 
 // ---------------------------------------------------------------- random
 
