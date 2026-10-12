@@ -329,6 +329,11 @@ public final class AutotestClient implements ClientModInitializer {
         config.enabled = enabled;
         config.shader.enabled = enabled;
         config.debugView = view;
+        // -Dpocortx.autotest.quality=LOW|MEDIUM|HIGH|ULTRA tests another preset.
+        String quality = System.getProperty("pocortx.autotest.quality");
+        if (quality != null) {
+            config.quality = RtxConfig.Quality.valueOf(quality);
+        }
     }
 
     private static void run(Minecraft client, String command) {
