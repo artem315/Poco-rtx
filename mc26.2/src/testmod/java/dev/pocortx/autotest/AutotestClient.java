@@ -96,6 +96,8 @@ public final class AutotestClient implements ClientModInitializer {
             setRtx(true, RtxConfig.DebugView.OFF);
         }));
         steps.add(new Step(30, "water_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
+        steps.add(new Step(30, "water_debug_reflections", c -> setRtx(true, RtxConfig.DebugView.REFLECTIONS)));
+        steps.add(new Step(30, "water_debug_lighting", c -> setRtx(true, RtxConfig.DebugView.LIGHTING)));
 
         steps.add(new Step(30, "sunset_on", c -> {
             run(c, "time set 11900");
