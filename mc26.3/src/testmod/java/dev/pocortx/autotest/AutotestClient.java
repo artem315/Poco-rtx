@@ -220,6 +220,33 @@ public final class AutotestClient implements ClientModInitializer {
         }));
         steps.add(new Step(30, "crack_t14200_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
 
+        // Closest to the phone screenshot: two block columns standing from the sea floor to above
+        // the water, a ledge next to them whose edge also goes down to the floor, camera above
+        // the water a few blocks away.
+        String columnView = "tp @a 34.0 -57.3 1.2 0 30";
+        steps.add(new Step(80, "column_t18000", c -> {
+            run(c, "fill 24 -64 -8 46 -50 18 air");
+            run(c, "fill 24 -64 -8 46 -64 18 stone");
+            run(c, "fill 24 -63 -8 46 -61 18 water");
+            run(c, "fill 24 -63 8 46 -62 18 sandstone");
+            run(c, "fill 24 -61 8 46 -61 18 sand");
+            run(c, "fill 28 -63 6 33 -61 7 smooth_stone");
+            run(c, "fill 28 -60 6 33 -60 7 smooth_stone_slab");
+            run(c, "fill 34 -63 6 35 -60 7 andesite");
+            run(c, "fill 36 -63 7 40 -61 7 sandstone");
+            run(c, "weather clear");
+            run(c, "time set 18000");
+            run(c, columnView);
+            setRtx(true, RtxConfig.DebugView.OFF);
+        }));
+        for (int time : new int[] {13600, 14600, 16000, 20000, 21500}) {
+            steps.add(new Step(50, "column_t" + time, c -> {
+                run(c, "time set " + time);
+                setRtx(true, RtxConfig.DebugView.OFF);
+            }));
+        }
+        steps.add(new Step(30, "column_t21500_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
+
         // The new screens: Video Settings with the two buttons, then RTX and shader settings.
         steps.add(new Step(20, "ui_video", c -> c.gui.setScreen(
                 new net.minecraft.client.gui.screens.options.VideoSettingsScreen(null, c, c.options))));
