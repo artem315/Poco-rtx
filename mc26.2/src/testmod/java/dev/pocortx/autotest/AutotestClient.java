@@ -185,6 +185,41 @@ public final class AutotestClient implements ClientModInitializer {
         steps.add(new Step(30, "steps_day_debug_lighting", c -> setRtx(true, RtxConfig.DebugView.LIGHTING)));
         steps.add(new Step(30, "steps_day_debug_gi", c -> setRtx(true, RtxConfig.DebugView.GI)));
 
+        // Shore facing east, so the rising moon is behind the blocks and its glint on the water
+        // lies in their shadow (as on the phone screenshot). Blocks sit side by side, so the
+        // joints between them face the camera.
+        String crackView = "tp @a 55.5 -57.4 7.5 -90 24";
+        steps.add(new Step(80, "crack_t13600", c -> {
+            run(c, "fill 48 -64 -6 74 -50 20 air");
+            run(c, "fill 48 -64 -6 74 -64 20 stone");
+            run(c, "fill 48 -63 -6 74 -61 20 water");
+            run(c, "fill 62 -63 -6 74 -62 20 sandstone");
+            run(c, "fill 62 -61 -6 74 -61 20 sand");
+            run(c, "fill 61 -63 1 61 -62 14 sandstone");
+            run(c, "fill 60 -63 3 60 -63 11 sandstone");
+            run(c, "fill 59 -63 5 59 -63 9 stone");
+            run(c, "fill 61 -61 2 61 -61 13 smooth_stone");
+            run(c, "fill 61 -60 2 61 -60 13 smooth_stone_slab");
+            run(c, "fill 62 -60 5 62 -59 9 andesite");
+            run(c, "fill 63 -60 3 63 -60 11 stone");
+            run(c, "weather clear");
+            run(c, "time set 13600");
+            run(c, crackView);
+            setRtx(true, RtxConfig.DebugView.OFF);
+        }));
+        for (int time : new int[] {14200, 15000, 16000, 17000, 18000, 22800}) {
+            steps.add(new Step(50, "crack_t" + time, c -> {
+                run(c, "time set " + time);
+                setRtx(true, RtxConfig.DebugView.OFF);
+            }));
+        }
+        steps.add(new Step(30, "crack_t22800_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
+        steps.add(new Step(50, "crack_t14200_b", c -> {
+            run(c, "time set 14200");
+            setRtx(true, RtxConfig.DebugView.OFF);
+        }));
+        steps.add(new Step(30, "crack_t14200_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
+
         // The new screens: Video Settings with the two buttons, then RTX and shader settings.
         steps.add(new Step(20, "ui_video", c -> c.gui.setScreen(
                 new net.minecraft.client.gui.screens.options.VideoSettingsScreen(null, c, c.options))));

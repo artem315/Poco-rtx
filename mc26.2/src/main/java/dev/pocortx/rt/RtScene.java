@@ -51,6 +51,12 @@ public final class RtScene {
     private static final Logger LOGGER = LoggerFactory.getLogger("PocoRTX");
     public static final int VERTEX_SIZE = 28;
     private static final float QUAD_DILATION = 0.004f;
+    /**
+     * Test only: {@code -Dpocortx.debug.crack=0.002} shrinks every face by this many blocks, so
+     * neighbouring faces leave cracks, as on a GPU whose ray traversal is not watertight. 0 in
+     * normal play.
+     */
+    private static final float DEBUG_CRACK = Float.parseFloat(System.getProperty("pocortx.debug.crack", "0"));
     private static final int MAX_QUADS = 1 << 17;
     private static final int RING = 3;
     private static final int ENTRY_SIZE = 32;
@@ -170,7 +176,7 @@ public final class RtScene {
                 float dx = x - cx, dy = y - cy, dz = z - cz;
                 float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
                 if (len > 1.0e-4f) {
-                    float k = QUAD_DILATION / len;
+                    float k = (QUAD_DILATION - DEBUG_CRACK) / len;
                     MemoryUtil.memPutFloat(v, x + dx * k);
                     MemoryUtil.memPutFloat(v + 4, y + dy * k);
                     MemoryUtil.memPutFloat(v + 8, z + dz * k);
