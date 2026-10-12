@@ -4,6 +4,7 @@
   "package": "dev.pocortx.mixin",
   "compatibilityLevel": "JAVA_21",
   "client": [
+    "CompileTaskMixin",
     "GameRendererMixin",
     "LevelRendererMixin",
     "SectionCompilerMixin",

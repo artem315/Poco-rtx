@@ -50,6 +50,7 @@ import static org.lwjgl.vulkan.KHRAccelerationStructure.*;
 public final class RtScene {
     private static final Logger LOGGER = LoggerFactory.getLogger("PocoRTX");
     public static final int VERTEX_SIZE = 28;
+    private static final float QUAD_DILATION = 0.004f;
     private static final int MAX_QUADS = 1 << 17;
     private static final int RING = 3;
     private static final int ENTRY_SIZE = 32;
@@ -77,7 +78,17 @@ public final class RtScene {
     private static volatile int captureX, captureY, captureZ, captureRadius;
 
     /** Called on chunk compile threads with the freshly built meshes of one section. */
+    /**
+     * Compile results waiting for their task to finish. Vanilla throws away the results of
+     * cancelled (outdated) compile tasks; only what it actually uploads may become ray tracing
+     * geometry, or an outdated mesh (old blocks, old light) finishing late would replace the
+     * current one.
+     */
+    private static final ThreadLocal<Captured> PENDING_TASK = new ThreadLocal<>();
+
+    /** Section compile tasks run on worker threads; the compile result is kept until the task is done. */
     public static void onSectionCompiled(SectionPos pos, SectionCompiler.Results results) {
+        discardPending();
         if (!capturing) {
             return;
         }
@@ -100,9 +111,72 @@ public final class RtScene {
             }
             long copy = MemoryUtil.nmemAlloc(bytes);
             MemoryUtil.memCopy(MemoryUtil.memAddress(src), copy, bytes);
+            dilateQuads(copy, state.vertexCount());
             layers.add(new CapturedLayer(entry.getKey().ordinal(), copy, state.vertexCount()));
         }
-        CAPTURED.add(new Captured(pos.asLong(), layers.toArray(new CapturedLayer[0])));
+        PENDING_TASK.set(new Captured(pos.asLong(), layers.toArray(new CapturedLayer[0])));
+    }
+
+    /** End of a vanilla compile task on this thread: publish its mesh if vanilla kept it. */
+    public static void onCompileTaskDone(boolean successful) {
+        Captured captured = PENDING_TASK.get();
+        if (captured == null) {
+            return;
+        }
+        PENDING_TASK.remove();
+        if (successful) {
+            CAPTURED.add(captured);
+        } else {
+            free(captured);
+        }
+    }
+
+    public static void discardPending() {
+        Captured captured = PENDING_TASK.get();
+        if (captured != null) {
+            PENDING_TASK.remove();
+            free(captured);
+        }
+    }
+
+    private static void free(Captured captured) {
+        for (CapturedLayer layer : captured.layers()) {
+            MemoryUtil.nmemFree(layer.data());
+        }
+    }
+
+    /**
+     * Grows every quad by a few millimetres in its own plane. Neighbouring block faces then
+     * overlap instead of only sharing an edge: ray traversal is not guaranteed to be watertight
+     * on every GPU, and rays slipping through the joints showed up as bright lines (light
+     * leaking through the joints into shadows and reflections).
+     */
+    private static void dilateQuads(long data, int vertexCount) {
+        for (int q = 0; q + 3 < vertexCount; q += 4) {
+            long base = data + (long) q * VERTEX_SIZE;
+            float cx = 0.0f, cy = 0.0f, cz = 0.0f;
+            for (int i = 0; i < 4; i++) {
+                long v = base + (long) i * VERTEX_SIZE;
+                cx += MemoryUtil.memGetFloat(v);
+                cy += MemoryUtil.memGetFloat(v + 4);
+                cz += MemoryUtil.memGetFloat(v + 8);
+            }
+            cx *= 0.25f;
+            cy *= 0.25f;
+            cz *= 0.25f;
+            for (int i = 0; i < 4; i++) {
+                long v = base + (long) i * VERTEX_SIZE;
+                float x = MemoryUtil.memGetFloat(v), y = MemoryUtil.memGetFloat(v + 4), z = MemoryUtil.memGetFloat(v + 8);
+                float dx = x - cx, dy = y - cy, dz = z - cz;
+                float len = (float) Math.sqrt(dx * dx + dy * dy + dz * dz);
+                if (len > 1.0e-4f) {
+                    float k = QUAD_DILATION / len;
+                    MemoryUtil.memPutFloat(v, x + dx * k);
+                    MemoryUtil.memPutFloat(v + 4, y + dy * k);
+                    MemoryUtil.memPutFloat(v + 8, z + dz * k);
+                }
+            }
+        }
     }
 
     // ------------------------------------------------------------------ entity capture (render thread)

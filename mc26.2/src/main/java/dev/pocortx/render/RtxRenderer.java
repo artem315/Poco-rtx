@@ -40,6 +40,7 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.renderer.LevelTargetBundle;
 import net.minecraft.client.renderer.MappableRingBuffer;
 import net.minecraft.client.renderer.RenderPipelines;
+import net.minecraft.client.renderer.state.LightmapRenderState;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.state.level.LevelRenderState;
 import net.minecraft.client.renderer.state.level.SkyRenderState;
@@ -48,6 +49,7 @@ import net.minecraft.core.BlockPos;
 import net.minecraft.data.AtlasIds;
 import net.minecraft.resources.Identifier;
 import net.minecraft.util.Mth;
+import net.minecraft.world.level.CardinalLighting;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.dimension.DimensionType;
 import net.minecraft.world.level.material.FogType;
@@ -79,17 +81,19 @@ public final class RtxRenderer {
     private static final float SUN_PATH_TILT = (float) Math.toRadians(17.0);
     private static final String RT_UBO = "RtxFrame";
     private static final String FX_UBO = "FxFrame";
-    private static final int TRACE_UBO_SIZE = 5 * 64 + 14 * 16;
-    private static final int RT_UBO_SIZE = 64 + 6 * 16;
+    private static final int TRACE_UBO_SIZE = 5 * 64 + 19 * 16;
+    private static final int RT_UBO_SIZE = 2 * 64 + 10 * 16;
     private static final int FX_UBO_SIZE = 4 * 16;
     private static final int RING = 3;
 
-    private static final RenderPipeline BLUR1 = post("rt_blur", null, GpuFormat.RGBA16_FLOAT, 1, RT_UBO, "OpaqueDepthSampler", "SourceSampler");
-    private static final RenderPipeline BLUR2 = post("rt_blur", null, GpuFormat.RGBA16_FLOAT, 2, RT_UBO, "OpaqueDepthSampler", "SourceSampler");
-    // result = src.rgb + dst.rgb * src.a, destination alpha untouched
+    private static final RenderPipeline BLUR1 = post("rt_blur", null, GpuFormat.RGBA16_FLOAT, 1, RT_UBO,
+            "OpaqueDepthSampler", "SourceSampler", "NormalSampler", "InfoSampler");
+    private static final RenderPipeline BLUR2 = post("rt_blur", null, GpuFormat.RGBA16_FLOAT, 2, RT_UBO,
+            "OpaqueDepthSampler", "SourceSampler", "NormalSampler", "InfoSampler");
+    // Reads a copy of the frame and writes the relit frame (alpha kept).
     private static final RenderPipeline COMPOSITE = post("rt_composite",
-            new BlendFunction(BlendFactor.ONE, BlendFactor.SRC_ALPHA, BlendFactor.ZERO, BlendFactor.ONE), GpuFormat.RGBA8_UNORM, 0, RT_UBO,
-            "OpaqueDepthSampler", "FinalDepthSampler", "LightSampler", "IndirectSampler", "ReflSampler");
+            new BlendFunction(BlendFactor.ONE, BlendFactor.ZERO, BlendFactor.ZERO, BlendFactor.ONE), GpuFormat.RGBA8_UNORM, 0, RT_UBO,
+            "SceneSampler", "OpaqueDepthSampler", "FinalDepthSampler", "LightSampler", "IndirectSampler", "ReflSampler", "NormalSampler", "InfoSampler");
     private static final RenderPipeline FX_BLOOM_PREFILTER = post("fx_bloom_down", null, GpuFormat.RGBA8_UNORM, 1, FX_UBO, "SourceSampler");
     private static final RenderPipeline FX_BLOOM_DOWN = post("fx_bloom_down", null, GpuFormat.RGBA8_UNORM, 0, FX_UBO, "SourceSampler");
     private static final RenderPipeline FX_BLOOM_UP = post("fx_bloom_up",
@@ -218,7 +222,10 @@ public final class RtxRenderer {
     }
 
     private static boolean fxWanted() {
-        return RtxConfig.get().shader.enabled && Minecraft.getInstance().level != null && !IrisCompat.isShaderPackInUse();
+        RtxConfig config = RtxConfig.get();
+        // Debug views show the raw ray traced data, without colour grading.
+        boolean debugShown = config.enabled && config.debugView != RtxConfig.DebugView.OFF && INSTANCE.hardwareRtActive();
+        return config.shader.enabled && !debugShown && Minecraft.getInstance().level != null && !IrisCompat.isShaderPackInUse();
     }
 
     // ------------------------------------------------------------------ hooks
@@ -440,37 +447,31 @@ public final class RtxRenderer {
 
             writeRtUniforms(levelState, main, tw, th);
             GpuSampler nearest = nearest();
-            GpuSampler linear = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
             GpuTextureView lightView = out[0].view();
             GpuTextureView indirectView = out[1].view();
             if (config.temporalDenoise || config.quality.renderScale < 1.0f) {
-                drawRt("PocoRTX denoise light", BLUR1, blurLight, pass -> {
-                    pass.bindTexture("OpaqueDepthSampler", opaqueDepth.getDepthTextureView(), nearest);
-                    pass.bindTexture("SourceSampler", out[0].view(), nearest);
-                });
-                drawRt("PocoRTX denoise light 2", BLUR2, blurLight2, pass -> {
-                    pass.bindTexture("OpaqueDepthSampler", opaqueDepth.getDepthTextureView(), nearest);
-                    pass.bindTexture("SourceSampler", blurLight.getColorTextureView(), nearest);
-                });
-                drawRt("PocoRTX denoise indirect", BLUR1, blurIndirect, pass -> {
-                    pass.bindTexture("OpaqueDepthSampler", opaqueDepth.getDepthTextureView(), nearest);
-                    pass.bindTexture("SourceSampler", out[1].view(), nearest);
-                });
-                drawRt("PocoRTX denoise indirect 2", BLUR2, blurIndirect2, pass -> {
-                    pass.bindTexture("OpaqueDepthSampler", opaqueDepth.getDepthTextureView(), nearest);
-                    pass.bindTexture("SourceSampler", blurIndirect.getColorTextureView(), nearest);
-                });
+                blur("PocoRTX denoise light", BLUR1, blurLight, out[0].view());
+                blur("PocoRTX denoise light 2", BLUR2, blurLight2, blurLight.getColorTextureView());
+                blur("PocoRTX denoise indirect", BLUR1, blurIndirect, out[1].view());
+                blur("PocoRTX denoise indirect 2", BLUR2, blurIndirect2, blurIndirect.getColorTextureView());
                 lightView = blurLight2.getColorTextureView();
                 indirectView = blurIndirect2.getColorTextureView();
             }
             GpuTextureView finalLight = lightView;
             GpuTextureView finalIndirect = indirectView;
+            GpuTextureView reflView = out[2].view();
+            // The frame is read from a copy (shared with the shader effects, which copy it again later).
+            fxScene = ensure(fxScene, "PocoRTX shader scene", main.width, main.height, false, GpuFormat.RGBA8_UNORM);
+            encoder().copyTextureToTexture(main.getColorTexture(), fxScene.getColorTexture(), 0, 0, 0, 0, 0, main.width, main.height);
             drawRt("PocoRTX composite", COMPOSITE, main, pass -> {
+                pass.bindTexture("SceneSampler", fxScene.getColorTextureView(), nearest);
                 pass.bindTexture("OpaqueDepthSampler", opaqueDepth.getDepthTextureView(), nearest);
                 pass.bindTexture("FinalDepthSampler", finalTarget.getDepthTextureView(), nearest);
                 pass.bindTexture("LightSampler", finalLight, nearest);
                 pass.bindTexture("IndirectSampler", finalIndirect, nearest);
-                pass.bindTexture("ReflSampler", out[2].view(), linear);
+                pass.bindTexture("ReflSampler", reflView, nearest);
+                pass.bindTexture("NormalSampler", gNormal.view(), nearest);
+                pass.bindTexture("InfoSampler", gInfo.view(), nearest);
             });
             rtUbo.rotate();
         } catch (Throwable t) {
@@ -488,6 +489,16 @@ public final class RtxRenderer {
                 .sampled(5, atlasView, atlasSampler)
                 .sampled(6, materialView, nearestSampler)
                 .sampled(13, histLight, linearSampler);
+    }
+
+    private void blur(String label, RenderPipeline pipeline, RenderTarget target, GpuTextureView source) {
+        GpuSampler nearest = nearest();
+        drawRt(label, pipeline, target, pass -> {
+            pass.bindTexture("OpaqueDepthSampler", opaqueDepth.getDepthTextureView(), nearest);
+            pass.bindTexture("SourceSampler", source, nearest);
+            pass.bindTexture("NormalSampler", gNormal.view(), nearest);
+            pass.bindTexture("InfoSampler", gInfo.view(), nearest);
+        });
     }
 
     private static long vkView(GpuTextureView view) {
@@ -514,6 +525,12 @@ public final class RtxRenderer {
     private final Vector3f lightColor = new Vector3f();
     private float lightStrength;
     private float daylight;
+    private float directShare;
+    // Vanilla lightmap inputs (core/lightmap.fsh), so ray traced lighting can replace it exactly.
+    private final float[] lmSky = new float[4];
+    private final float[] lmBlock = new float[4];
+    private final float[] lmAmbient = new float[4];
+    private final float[] faceShade = new float[4];
 
     private void computeLight(LevelRenderState state) {
         SkyRenderState sky = state.skyRenderState;
@@ -530,19 +547,43 @@ public final class RtxRenderer {
         if (sun.y >= 0.0f || moon.y < 0.0f) {
             lightDir.set(sun);
             lightStrength = smoothstep(-0.02f, 0.12f, sun.y);
+            directShare = lightStrength;
             float warm = smoothstep(0.0f, 0.35f, sun.y);
             lightColor.set(1.0f, Mth.lerp(warm, 0.55f, 0.95f), Mth.lerp(warm, 0.28f, 0.85f));
         } else {
             lightDir.set(moon);
             lightStrength = 0.35f * smoothstep(-0.02f, 0.12f, moon.y);
+            directShare = 0.75f * smoothstep(-0.02f, 0.12f, moon.y);
             lightColor.set(0.55f, 0.65f, 0.95f);
         }
-        lightStrength *= (1.0f - 0.8f * rain) * (1.0f - 0.5f * thunder);
+        float weather = (1.0f - 0.8f * rain) * (1.0f - 0.5f * thunder);
+        lightStrength *= weather;
+        directShare *= weather;
         daylight = Mth.lerp(smoothstep(-0.12f, 0.2f, sun.y), 0.16f, 1.0f) * (1.0f - 0.35f * rain);
         if (!overworldSky) {
             lightStrength = 0.0f;
             daylight = 0.0f;
+            directShare = 0.0f;
         }
+
+        LightmapRenderState lm = mc.gameRenderer.gameRenderState().lightmapRenderState;
+        lmSky[0] = lm.skyLightColor.x() * lm.skyFactor;
+        lmSky[1] = lm.skyLightColor.y() * lm.skyFactor;
+        lmSky[2] = lm.skyLightColor.z() * lm.skyFactor;
+        lmSky[3] = lm.blockFactor;
+        lmBlock[0] = lm.blockLightTint.x();
+        lmBlock[1] = lm.blockLightTint.y();
+        lmBlock[2] = lm.blockLightTint.z();
+        lmBlock[3] = lm.brightness;
+        lmAmbient[0] = Math.max(lm.ambientColor.x(), lm.nightVisionColor.x() * lm.nightVisionEffectIntensity);
+        lmAmbient[1] = Math.max(lm.ambientColor.y(), lm.nightVisionColor.y() * lm.nightVisionEffectIntensity);
+        lmAmbient[2] = Math.max(lm.ambientColor.z(), lm.nightVisionColor.z() * lm.nightVisionEffectIntensity);
+        lmAmbient[3] = lm.darknessEffectScale;
+        CardinalLighting cardinal = level.cardinalLighting();
+        faceShade[0] = cardinal.down();
+        faceShade[1] = cardinal.up();
+        faceShade[2] = (cardinal.north() + cardinal.south()) * 0.5f;
+        faceShade[3] = (cardinal.west() + cardinal.east()) * 0.5f;
     }
 
     private void writeTraceUniforms(LevelRenderState state, RenderTarget main, int tw, int th, RtBuffer ubo) {
@@ -609,7 +650,12 @@ public final class RtxRenderer {
                 .putVec4(config.rtDistance * 16.0f, 0.03f, wetness, on(config.alphaTestedShadows))
                 .putVec4(config.temporalDenoise ? 0.15f : 1.0f, config.debugView.ordinal(), config.emissiveStrength, history ? 1.0f : 0.0f)
                 .putVec4(cloudHeight, config.volumetricStrength, config.specularStrength, submerged ? 1.0f : 0.0f)
-                .putVec4(on(q.giShadowRays), on(q.reflectionShadowRays), q.diffuseLod, 0.0f);
+                .putVec4(on(q.giShadowRays), on(q.reflectionShadowRays), q.diffuseLod, 0.0f)
+                .putVec4(lmSky[0], lmSky[1], lmSky[2], lmSky[3])
+                .putVec4(lmBlock[0], lmBlock[1], lmBlock[2], lmBlock[3])
+                .putVec4(lmAmbient[0], lmAmbient[1], lmAmbient[2], lmAmbient[3])
+                .putVec4(faceShade[0], faceShade[1], faceShade[2], faceShade[3])
+                .putVec4(directShare, 1.0f, 0.0f, 0.0f);
         ubo.flush(0, TRACE_UBO_SIZE);
     }
 
@@ -618,19 +664,23 @@ public final class RtxRenderer {
         if (rtUbo == null) {
             rtUbo = new MappableRingBuffer(() -> "PocoRTX composite", GpuBuffer.USAGE_UNIFORM | GpuBuffer.USAGE_MAP_WRITE, RT_UBO_SIZE);
         }
-        boolean submerged = submerged(state.cameraRenderState);
         try (GpuBufferSlice.MappedView mapped = rtUbo.currentBuffer().map(false, true)) {
             Std140Builder.intoBuffer(mapped.data())
                     .putMat4f(invProj)
+                    .putMat4f(viewRot)
                     .putVec4(main.width, main.height, tw, th)
                     .putVec4(lightColor.x, lightColor.y, lightColor.z, lightStrength)
-                    .putVec4(config.ambientOcclusion ? config.aoStrength : 0.0f,
-                            config.shadows && !submerged ? config.shadowStrength * lightStrength : 0.0f,
-                            config.volumetricLight && !submerged ? config.volumetricStrength : 0.0f,
+                    .putVec4(lightDir.x, lightDir.y, lightDir.z, directShare)
+                    .putVec4(config.ambientOcclusion ? config.aoStrength : 0.0f, config.shadowStrength,
+                            config.volumetricLight && !submerged(state.cameraRenderState) ? config.volumetricStrength : 0.0f,
                             config.reflections ? 1.0f : 0.0f)
-                    .putVec4(config.debugView.ordinal(), config.rtDistance * 16.0f, submerged ? 1.0f : 0.0f, 0.0f)
-                    .putVec4(RenderSystem.getDevice().getDeviceInfo().isZZeroToOne() ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f)
-                    .putVec4(0.0f, 0.0f, 0.0f, 0.0f);
+                    .putVec4(config.debugView.ordinal(), config.rtDistance * 16.0f,
+                            config.globalIllumination ? config.giStrength : 0.0f, 1.0f)
+                    .putVec4(RenderSystem.getDevice().getDeviceInfo().isZZeroToOne() ? 1.0f : 0.0f, 1.0f, 0.0f, 0.0f)
+                    .putVec4(lmSky[0], lmSky[1], lmSky[2], lmSky[3])
+                    .putVec4(lmBlock[0], lmBlock[1], lmBlock[2], lmBlock[3])
+                    .putVec4(lmAmbient[0], lmAmbient[1], lmAmbient[2], lmAmbient[3])
+                    .putVec4(faceShade[0], faceShade[1], faceShade[2], faceShade[3]);
         }
     }
 

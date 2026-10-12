@@ -25,8 +25,10 @@ bool setupPixel(out Pixel px) {
     if (any(greaterThanEqual(px.pix, ivec2(F.screen.zw)))) {
         return false;
     }
-    px.uv = (vec2(px.pix) + 0.5) / F.screen.zw;
-    px.fullPix = min(ivec2(px.uv * F.screen.xy), ivec2(F.screen.xy) - 1);
+    // Trace through the centre of the full resolution depth texel this pixel stands for, so
+    // the ray meets exactly the rasterised surface (also at block edges and silhouettes).
+    px.fullPix = min(ivec2((vec2(px.pix) + 0.5) / F.screen.zw * F.screen.xy), ivec2(F.screen.xy) - 1);
+    px.uv = (vec2(px.fullPix) + 0.5) / F.screen.xy;
     px.od = texelFetch(uOpaqueDepth, px.fullPix, 0).r;
     px.fd = texelFetch(uFinalDepth, px.fullPix, 0).r;
     px.viewDir = normalize(worldPos(px.uv, 0.5));
@@ -40,14 +42,19 @@ Rng makeRng(ivec2 pix, uint salt) {
     return rng;
 }
 
-vec3 depthNormal(ivec2 pix, vec3 p) {
+float sceneDepth(ivec2 pix, bool finalDepth) {
+    return finalDepth ? texelFetch(uFinalDepth, pix, 0).r : texelFetch(uOpaqueDepth, pix, 0).r;
+}
+
+// Surface normal from the depth buffer (opaque or final), for pixels without a ray hit.
+vec3 depthNormal(ivec2 pix, vec3 p, bool finalDepth) {
     ivec2 size = ivec2(F.screen.xy);
     ivec2 r = min(pix + ivec2(1, 0), size - 1), l = max(pix - ivec2(1, 0), ivec2(0));
     ivec2 u = min(pix + ivec2(0, 1), size - 1), d = max(pix - ivec2(0, 1), ivec2(0));
-    vec3 pr = worldPos((vec2(r) + 0.5) / F.screen.xy, texelFetch(uOpaqueDepth, r, 0).r);
-    vec3 pl = worldPos((vec2(l) + 0.5) / F.screen.xy, texelFetch(uOpaqueDepth, l, 0).r);
-    vec3 pu = worldPos((vec2(u) + 0.5) / F.screen.xy, texelFetch(uOpaqueDepth, u, 0).r);
-    vec3 pd = worldPos((vec2(d) + 0.5) / F.screen.xy, texelFetch(uOpaqueDepth, d, 0).r);
+    vec3 pr = worldPos((vec2(r) + 0.5) / F.screen.xy, sceneDepth(r, finalDepth));
+    vec3 pl = worldPos((vec2(l) + 0.5) / F.screen.xy, sceneDepth(l, finalDepth));
+    vec3 pu = worldPos((vec2(u) + 0.5) / F.screen.xy, sceneDepth(u, finalDepth));
+    vec3 pd = worldPos((vec2(d) + 0.5) / F.screen.xy, sceneDepth(d, finalDepth));
     vec3 dx = length(pr - p) < length(p - pl) ? pr - p : p - pl;
     vec3 dy = length(pu - p) < length(p - pd) ? pu - p : p - pd;
     vec3 n = normalize(cross(dx, dy));
@@ -96,6 +103,23 @@ float sunVisibility(vec3 p, vec3 n, inout Rng rng, bool alphaTest) {
     if (F.light.w <= 0.001 || dot(n, F.light.xyz) <= 0.0) {
         return 0.0;
     }
-    vec3 l = coneDir(F.light.xyz, F.params.y, rng);
+    vec3 l = lightSample(rng);
     return traceAny(p + n * 0.02, l, F.params.x * 1.5, MASK_OPAQUE | MASK_ENTITY, alphaTest) ? 0.0 : 1.0;
+}
+
+// Light leaving a surface hit by a secondary ray, with ray traced lighting. Vertex colours
+// carry vanilla face shading, which the lighting model replaces. GI wants lightmap units;
+// reflections want what the screen shows (vanilla brightness curve applied, like the
+// composite does for the rasterised world).
+vec3 shadeHit(Hit h, vec3 albedoTex, float vis, float glow, bool display) {
+    if (h.inside) {
+        return vec3(0.0);
+    }
+    vec3 albedo = albedoTex * h.color.rgb / (h.entity ? 1.0 : faceShadeOf(h.n));
+    vec3 light = rtLight(h.n, h.lm, vis, 1.0);
+    if (display) {
+        vec3 ev = max(vanillaLight(h.lm), vec3(0.02));
+        light *= lightDisplay(ev) / ev;
+    }
+    return albedo * (light + glow);
 }

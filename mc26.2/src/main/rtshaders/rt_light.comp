@@ -4,8 +4,8 @@
 #extension GL_EXT_buffer_reference_uvec2 : require
 #extension GL_GOOGLE_include_directive : require
 
-// Kernel 1/3: primary hit (writes the G-buffer), ambient occlusion, sun/moon shadows and
-// volumetric light. Output: AO, sun visibility, volumetric light, view depth.
+// Kernel 1/3: primary hit (writes the G-buffer), ambient occlusion, sun/moon visibility and
+// volumetric light. Output: AO, sun/moon visibility, volumetric light, view depth.
 
 layout(local_size_x = 8, local_size_y = 8) in;
 
@@ -21,32 +21,49 @@ Surface primarySurface(Pixel px, vec3 p, bool alphaTest) {
     Surface s;
     s.p = p;
     s.exact = false;
-    float dist = length(p);
-    vec3 dir = p / max(dist, 1e-4);
-    Hit h = traceClosest(vec3(0.0), dir, dist * 1.02 + 0.3, MASK_OPAQUE | MASK_ENTITY, alphaTest);
+    s.n = depthNormal(px.fullPix, p, false);
+    s.albedo = vec3(0.45);
+    s.lm = vec2(0.0, 1.0);
     s.mat.roughness = 0.9;
     s.mat.f0 = 0.04;
     s.mat.metal = false;
     s.mat.emissive = 0.0;
-    s.mat.id = MAT_DEFAULT;
-    if (h.hit && h.entity && abs(h.t - dist) < max(0.15, dist * 0.02)) {
+    s.mat.id = MAT_NONE;
+    float dist = length(p);
+    vec3 dir = p / max(dist, 1e-4);
+    float tol = max(0.06, dist * 0.01);
+    // First along the view ray. Grazing rays and rays exactly along a block edge can miss the
+    // rasterised face or slip between two faces: then look for the face straight along its
+    // depth normal. (One loop, so the ray query code is emitted once.)
+    Hit h;
+    bool found = false;
+    vec3 hp = p;
+    for (int attempt = 0; attempt < 2 && !found; attempt++) {
+        bool retry = attempt == 1;
+        vec3 ro = retry ? p + s.n * 0.25 : vec3(0.0);
+        vec3 rd = retry ? -s.n : dir;
+        h = traceClosest(ro, rd, retry ? 0.5 : dist + tol + 0.3, MASK_OPAQUE | MASK_ENTITY, alphaTest);
+        float expected = retry ? 0.25 : dist;
+        float within = retry ? 0.1 : (h.entity ? max(0.15, dist * 0.02) : tol);
+        found = h.hit && !h.inside && abs(h.t - expected) < within;
+        // Secondary rays start from the exact hit point on the face.
+        hp = ro + rd * h.t;
+    }
+    if (!found) {
+        // Beyond the RT distance or not built yet: the composite keeps vanilla lighting here.
+        return s;
+    }
+    s.p = hp;
+    s.n = h.n;
+    s.lm = h.lm;
+    if (h.entity) {
         // Mobs and block entities: exact shape, but their textures are not in the block atlas.
-        s.p = dir * h.t;
-        s.n = h.n;
         s.albedo = h.color.rgb * 0.5;
-        s.lm = h.lm;
-    } else if (h.hit && !h.entity && abs(h.t - dist) < max(0.08, dist * 0.012)) {
-        s.exact = true;
-        s.p = dir * h.t;
-        s.n = h.n;
-        s.albedo = textureLod(uAtlas, h.uv, 0.0).rgb * h.color.rgb;
-        s.lm = h.lm;
-        s.mat = material(h.uv);
+        s.mat.id = MAT_ENTITY;
     } else {
-        // Not in the acceleration structure (beyond RT distance): fall back to depth.
-        s.n = depthNormal(px.fullPix, p);
-        s.albedo = vec3(0.45);
-        s.lm = vec2(0.0, 1.0);
+        s.exact = true;
+        s.albedo = textureLod(uAtlas, h.uv, 0.0).rgb * h.color.rgb / faceShadeOf(h.n);
+        s.mat = material(h.uv);
     }
     return s;
 }
@@ -66,7 +83,6 @@ void main() {
         vec3 p = worldPos(px.uv, px.od);
         float dist = length(p);
         tEnd = min(dist, 64.0);
-        float fade = 1.0 - smoothstep(F.params.x * 0.85, F.params.x * 1.15, dist);
         Surface s = primarySurface(px, p, alphaTest);
         // Wet ground: puddles on exposed, upward facing surfaces (seen by the other kernels via the G-buffer).
         float wet = F.params.z;
@@ -84,31 +100,33 @@ void main() {
         vec3 origin = s.p + s.n * 0.02;
 
         if (F.toggles.x > 0.5) {
+            const float AO_RANGE = 2.0;
             int n = int(F.counts.x);
             float occ = 0.0;
             for (int i = 0; i < n; i++) {
                 vec3 d = cosineDir(s.n, rng);
                 rayQueryEXT rq;
-                rayQueryInitializeEXT(rq, uScene, gl_RayFlagsOpaqueEXT, MASK_OPAQUE | MASK_ENTITY, origin, 0.0, d, 1.5);
+                rayQueryInitializeEXT(rq, uScene, gl_RayFlagsOpaqueEXT, MASK_OPAQUE | MASK_ENTITY, origin, 0.0, d, AO_RANGE);
                 while (rayQueryProceedEXT(rq)) {
                 }
                 if (rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT) {
-                    occ += 1.0 - rayQueryGetIntersectionTEXT(rq, true) / 1.5;
+                    float t = rayQueryGetIntersectionTEXT(rq, true) / AO_RANGE;
+                    occ += 1.0 - t * t;
                 }
             }
-            outLight.r = 1.0 - occ / float(max(n, 1)) * fade;
+            outLight.r = 1.0 - occ / float(max(n, 1));
         }
 
-        if (F.toggles.y > 0.5 && F.light.w > 0.001) {
-            float facing = smoothstep(-0.05, 0.25, dot(s.n, F.light.xyz));
-            float sunlit = facing > 0.0 ? facing * sunVisibility(s.p, s.n, rng, alphaTest) : 0.0;
-            sunlit = mix(1.0, sunlit, fade);
-            outLight.g = mix(1.0, sunlit, smoothstep(0.45, 0.95, s.lm.y));
+        // Sun/moon visibility; N.L is applied per full resolution pixel by the composite.
+        if (F.toggles.y > 0.5) {
+            outLight.g = F.light.w > 0.001 && dot(s.n, F.light.xyz) > 0.0 ? sunVisibility(s.p, s.n, rng, alphaTest) : 0.0;
+        } else {
+            outLight.g = guessVisibility(s.lm);
         }
     } else {
         imageStore(gNormalOut, px.pix, vec4(0.0, 1.0, 0.0, -1.0));
         imageStore(gAlbedoOut, px.pix, vec4(0.0));
-        imageStore(gInfoOut, px.pix, vec4(0.0, 1.0, 0.0, 0.0));
+        imageStore(gInfoOut, px.pix, vec4(0.0, 1.0, 0.0, 1.0));   // MAT_NONE
     }
 
     if (F.toggles2.y > 0.5 && !submerged && F.light.w > 0.001) {
@@ -117,14 +135,14 @@ void main() {
         float jitter = rnd(rng);
         for (int i = 0; i < steps; i++) {
             float t = (float(i) + jitter) / float(steps) * tEnd;
-            vis += traceAny(px.viewDir * t, F.light.xyz, F.params.x * 1.5, MASK_OPAQUE | MASK_ENTITY, false) ? 0.0 : 1.0;
+            vis += traceAny(px.viewDir * t, lightSample(rng), F.params.x * 1.5, MASK_OPAQUE | MASK_ENTITY, false) ? 0.0 : 1.0;
         }
         vis /= float(max(steps, 1));
         float cosA = dot(px.viewDir, F.light.xyz);
         float g = 0.55;
         float phase = (1.0 - g * g) / pow(1.0 + g * g - 2.0 * g * cosA, 1.5) * 0.06;
         // Haze in front of the sky is thinner than in front of nearby geometry.
-        outLight.b = vis * phase * (1.0 - exp(-tEnd * 0.02)) * F.params3.y * (px.sky ? 0.5 : 1.0);
+        outLight.b = vis * phase * (1.0 - exp(-tEnd * 0.02)) * F.params3.y * F.light.w * (px.sky ? 0.5 : 1.0);
     }
 
     vec2 puv;

@@ -34,6 +34,13 @@ public final class AutotestClient implements ClientModInitializer {
             return;
         }
         buildPlan();
+        // -Dpocortx.autotest.only=steps_,day_ keeps only the shots with these name prefixes.
+        String only = System.getProperty("pocortx.autotest.only", "");
+        if (!only.isEmpty()) {
+            List<String> prefixes = List.of(only.split(","));
+            steps.removeIf(step -> step.name() != null && prefixes.stream().noneMatch(step.name()::startsWith)
+                    && !step.name().startsWith("ui_"));
+        }
         ClientTickEvents.END_CLIENT_TICK.register(this::tick);
     }
 
@@ -112,6 +119,70 @@ public final class AutotestClient implements ClientModInitializer {
             run(c, "time set 18000");
             setRtx(true, RtxConfig.DebugView.OFF);
         }));
+        // Night shoreline like the one reported from the phone: blocks half in water, moonlight.
+        steps.add(new Step(60, "shore_night_on", c -> {
+            run(c, "weather clear");
+            run(c, "time set 18000");
+            run(c, "fill -6 -61 4 2 -60 4 andesite");
+            run(c, "fill -6 -60 3 2 -60 3 smooth_stone_slab");
+            run(c, "fill 3 -61 4 5 -60 4 diorite");
+            run(c, "tp @a -1 -59.4 11 180 18");
+            setRtx(true, RtxConfig.DebugView.OFF);
+        }));
+        steps.add(new Step(30, "shore_night_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
+        steps.add(new Step(30, "shore_night_debug_reflections", c -> setRtx(true, RtxConfig.DebugView.REFLECTIONS)));
+        steps.add(new Step(30, "shore_night_debug_gi", c -> setRtx(true, RtxConfig.DebugView.GI)));
+        steps.add(new Step(30, "shore_night_debug_shadows", c -> setRtx(true, RtxConfig.DebugView.SHADOWS)));
+        steps.add(new Step(40, "shore_day_on", c -> {
+            run(c, "time set 4000");
+            setRtx(true, RtxConfig.DebugView.OFF);
+        }));
+        steps.add(new Step(30, "shore_day_debug_reflections", c -> setRtx(true, RtxConfig.DebugView.REFLECTIONS)));
+        steps.add(new Step(30, "shore_day_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
+        steps.add(new Step(30, "shore_day_debug_lighting", c -> setRtx(true, RtxConfig.DebugView.LIGHTING)));
+        steps.add(new Step(30, "shore_day_debug_ao", c -> setRtx(true, RtxConfig.DebugView.AO)));
+        steps.add(new Step(30, "shore_day_debug_gi", c -> setRtx(true, RtxConfig.DebugView.GI)));
+        steps.add(new Step(30, "shore_day_debug_shadows", c -> setRtx(true, RtxConfig.DebugView.SHADOWS)));
+
+        // The reported scene in detail: two blocks on a slab ledge at the waterline, a sandy
+        // shore stepping down under the water, seen from above the water at night.
+        String stepsView = "tp @a 33.5 -57.6 1.5 -20 28";
+        steps.add(new Step(80, "steps_night_on", c -> {
+            run(c, "fill 26 -64 -6 48 -50 18 air");
+            run(c, "fill 26 -64 -6 48 -64 18 stone");
+            run(c, "fill 26 -63 -6 48 -61 18 water");
+            run(c, "fill 26 -63 7 48 -62 18 sandstone");
+            run(c, "fill 26 -61 7 48 -61 18 sand");
+            run(c, "fill 29 -63 6 39 -62 6 sandstone");
+            run(c, "fill 31 -63 5 37 -63 5 sandstone");
+            run(c, "fill 33 -63 4 35 -63 4 stone");
+            run(c, "fill 30 -61 6 38 -61 6 smooth_stone");
+            run(c, "fill 30 -60 6 37 -60 6 smooth_stone_slab");
+            run(c, "fill 34 -60 7 35 -60 7 andesite");
+            run(c, "fill 38 -60 8 41 -60 8 stone");
+            run(c, "time set 18000");
+            run(c, "weather clear");
+            run(c, stepsView);
+            setRtx(true, RtxConfig.DebugView.OFF);
+        }));
+        steps.add(new Step(30, "steps_night_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
+        steps.add(new Step(30, "steps_night_debug_lighting", c -> setRtx(true, RtxConfig.DebugView.LIGHTING)));
+        steps.add(new Step(30, "steps_night_debug_shadows", c -> setRtx(true, RtxConfig.DebugView.SHADOWS)));
+        steps.add(new Step(30, "steps_night_debug_reflections", c -> setRtx(true, RtxConfig.DebugView.REFLECTIONS)));
+        steps.add(new Step(30, "steps_night_debug_ao", c -> setRtx(true, RtxConfig.DebugView.AO)));
+        steps.add(new Step(30, "steps_night_debug_gi", c -> setRtx(true, RtxConfig.DebugView.GI)));
+        steps.add(new Step(40, "steps_moonrise_on", c -> {
+            run(c, "time set 14000");
+            setRtx(true, RtxConfig.DebugView.OFF);
+        }));
+        steps.add(new Step(40, "steps_day_on", c -> {
+            run(c, "time set 3000");
+            setRtx(true, RtxConfig.DebugView.OFF);
+        }));
+        steps.add(new Step(30, "steps_day_off", c -> setRtx(false, RtxConfig.DebugView.OFF)));
+        steps.add(new Step(30, "steps_day_debug_lighting", c -> setRtx(true, RtxConfig.DebugView.LIGHTING)));
+        steps.add(new Step(30, "steps_day_debug_gi", c -> setRtx(true, RtxConfig.DebugView.GI)));
+
         // The new screens: Video Settings with the two buttons, then RTX and shader settings.
         steps.add(new Step(20, "ui_video", c -> c.gui.setScreen(
                 new net.minecraft.client.gui.screens.options.VideoSettingsScreen(null, c, c.options))));
@@ -147,6 +218,9 @@ public final class AutotestClient implements ClientModInitializer {
             LOGGER.info("AUTOTEST shot {} fps={} failed={} rt={} sections={} instances={}", file, client.getFps(), RtxRenderer.INSTANCE.hasFailed(),
                     RtxRenderer.INSTANCE.hardwareRtActive(), RtxRenderer.INSTANCE.traceSections(), RtxRenderer.INSTANCE.traceInstances());
             Screenshot.grab(client.gameDirectory, file, client.gameRenderer.mainRenderTarget(), 1, msg -> { });
+            var lm = client.gameRenderer.gameRenderState().lightmapRenderState;
+            LOGGER.info("AUTOTEST lightmap sky={} {} block={} tint={} ambient={} brightness={} darkness={}", lm.skyFactor, lm.skyLightColor,
+                    lm.blockFactor, lm.blockLightTint, lm.ambientColor, lm.brightness, lm.darknessEffectScale);
         }
         index++;
         if (index < steps.size()) {

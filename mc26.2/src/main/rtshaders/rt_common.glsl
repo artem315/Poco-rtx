@@ -23,6 +23,11 @@ layout(set = 0, binding = 1, std140) uniform Frame {
     vec4 params2;       // x: temporal blend, y: debug view, z: emissive strength, w: history valid
     vec4 params3;       // x: cloud height, y: volumetric strength, z: specular strength, w: submerged
     vec4 quality;       // x: shadow rays at GI hits, y: shadow rays at reflection hits, z: diffuse atlas LOD
+    vec4 lmSky;         // vanilla lightmap: rgb sky light colour * sky factor, w: block factor
+    vec4 lmBlock;       // rgb: block light tint, w: brightness option (gamma curve mix)
+    vec4 lmAmbient;     // rgb: ambient colour (night vision included), w: darkness
+    vec4 faceShade;     // vanilla face shading baked into vertex colours: down, up, north/south, east/west
+    vec4 lighting;      // x: share of sky light that is direct sun/moon light, y: sun/moon light scale
 } F;
 
 layout(set = 0, binding = 2, std430) readonly buffer Instances {
@@ -43,6 +48,7 @@ layout(buffer_reference, std430, buffer_reference_align = 4) readonly buffer Ver
 const uint MASK_OPAQUE = 1u;
 const uint MASK_TRANSLUCENT = 2u;
 const uint MASK_ENTITY = 4u;
+// Instance flags: bit g set when geometry g is cutout (alpha tested), then:
 const uint FLAG_TRANSLUCENT = 4u;
 const uint FLAG_ENTITY = 8u;     // entity vertex layout (36 bytes), textures not in the block atlas
 const float PI = 3.14159265;
@@ -55,6 +61,8 @@ const int MAT_ICE = 3;
 const int MAT_METAL = 4;
 const int MAT_GEM = 5;
 const int MAT_GLOW_PARTIAL = 6;
+const int MAT_ENTITY = 7;       // G-buffer only: mobs and block entities (no baked face shading)
+const int MAT_NONE = 255;       // G-buffer only: no ray traced surface for this pixel
 
 // ---------------------------------------------------------------- random
 
@@ -78,6 +86,15 @@ vec3 cosineDir(vec3 n, inout Rng r) {
     vec3 t = normalize(abs(n.y) < 0.99 ? cross(n, vec3(0.0, 1.0, 0.0)) : cross(n, vec3(1.0, 0.0, 0.0)));
     vec3 b = cross(n, t);
     return normalize(t * (cos(a) * s) + b * (sin(a) * s) + n * sqrt(max(0.0, 1.0 - v)));
+}
+
+vec3 coneDir(vec3 dir, float radius, inout Rng r);
+
+// Direction to a random point on the sun/moon disc. Never the exact light direction: at noon
+// and midnight it lies in the planes of the block grid, and rays running exactly along block
+// joints must not decide visibility for whole lines of pixels.
+vec3 lightSample(inout Rng r) {
+    return coneDir(F.light.xyz, F.params.y, r);
 }
 
 vec3 coneDir(vec3 dir, float radius, inout Rng r) {
@@ -112,6 +129,7 @@ struct Hit {
     vec2 lm;        // block light, sky light in [0, 1]
     bool translucent;
     bool entity;
+    bool inside;    // hit the back of a solid block face: the ray is inside solid terrain
 };
 
 uvec2 geometryAddress(uint ci, uint geom) {
@@ -190,6 +208,9 @@ Hit traceClosest(vec3 o, vec3 d, float tMax, uint mask, bool alphaTest) {
     }
     Hit h;
     h.hit = rayQueryGetIntersectionTypeEXT(rq, true) != gl_RayQueryCommittedIntersectionNoneEXT;
+    h.inside = false;
+    h.translucent = false;
+    h.entity = false;
     if (!h.hit) {
         h.t = tMax;
         return h;
@@ -210,6 +231,10 @@ Hit traceClosest(vec3 o, vec3 d, float tMax, uint mask, bool alphaTest) {
     vec3 p0 = vPos(v, i0, stride), p1 = vPos(v, i1, stride), p2 = vPos(v, i2, stride);
     vec3 n = cross(p1 - p0, p2 - p0);
     n = dot(n, n) > 1e-12 ? normalize(n) : -d;
+    // Block faces wind counter-clockwise seen from outside. Solid blocks have no visible back
+    // faces, so reaching one means the ray started inside terrain or slipped between faces.
+    bool cutout = ((instanceFlags >> geom) & 1u) != 0u;
+    h.inside = !cutout && !h.translucent && !h.entity && dot(n, d) > 0.0;
     h.n = dot(n, d) > 0.0 ? -n : n;
     h.uv = vUv(v, i0, stride) * w.x + vUv(v, i1, stride) * w.y + vUv(v, i2, stride) * w.z;
     h.color = vColor(v, i0, stride) * w.x + vColor(v, i1, stride) * w.y + vColor(v, i2, stride) * w.z;
@@ -245,6 +270,60 @@ float luma(vec3 c) {
 // Vanilla-like lightmap brightness, so ray traced hits match the rasterised world.
 float lightCurve(float l) {
     return l / (4.0 - 3.0 * l);
+}
+
+// ---------------------------------------------------------------- lighting model
+// Same model as rtx_light.glsl in the Minecraft passes; keep them in sync.
+
+// Vanilla lightmap (core/lightmap.fsh) before clamping and the brightness curve.
+vec3 vanillaLight(vec2 lm) {
+    vec3 c = F.lmAmbient.rgb + F.lmSky.rgb * lightCurve(lm.y);
+    float pm = (2.0 * lm.x - 1.0) * (2.0 * lm.x - 1.0);
+    c += mix(F.lmBlock.rgb, vec3(1.0), 0.9 * pm) * (lightCurve(lm.x) * F.lmSky.w);
+    return c - F.lmAmbient.w;
+}
+
+// Vanilla clamp + brightness curve (notGamma), open above 1 so ray traced sunlight can be
+// brighter than vanilla full light.
+vec3 lightDisplay(vec3 c) {
+    vec3 lo = clamp(c, 0.0, 1.0);
+    float m = max(max(lo.r, lo.g), max(lo.b, 1e-4));
+    float inv = 1.0 - m;
+    vec3 ng = lo * ((1.0 - inv * inv * inv * inv) / m);
+    return mix(lo, ng, F.lmBlock.w) + max(c - 1.0, 0.0);
+}
+
+float faceShadeOf(vec3 n) {
+    vec3 a = abs(n);
+    if (a.y >= a.x && a.y >= a.z) {
+        return n.y > 0.0 ? F.faceShade.y : F.faceShade.x;
+    }
+    return a.z >= a.x ? F.faceShade.z : F.faceShade.w;
+}
+
+vec3 sunTint() {
+    return F.lightColor.rgb / max(max(F.lightColor.r, F.lightColor.g), max(F.lightColor.b, 1e-3));
+}
+
+// Ray traced light arriving at a surface, in vanilla lightmap units: direct sun/moon light
+// (N.L and visibility), sky light from the upper hemisphere (occlusion), block light.
+vec3 rtLight(vec3 n, vec2 lm, float vis, float ao) {
+    float d = F.lighting.x;
+    float hemi = 0.6 + 0.4 * n.y;
+    vec3 sky = F.lmSky.rgb * (lightCurve(lm.y) * mix(1.0, 0.42, d) * hemi * ao);
+    float ndl = max(dot(n, F.light.xyz), 0.0);
+    // Sky light level gates direct light where rays cannot see far enough (caves) and dims it
+    // a little under water and indoors.
+    float gate = smoothstep(0.03, 0.35, lm.y) * mix(0.55, 1.0, lightCurve(lm.y));
+    vec3 sun = F.lmSky.rgb * sunTint() * (0.72 * d * F.lighting.y * ndl * vis * gate);
+    float pm = (2.0 * lm.x - 1.0) * (2.0 * lm.x - 1.0);
+    vec3 block = mix(F.lmBlock.rgb, vec3(1.0), 0.9 * pm) * (lightCurve(lm.x) * F.lmSky.w * mix(1.0, ao, 0.6));
+    return F.lmAmbient.rgb + sky + sun + block - F.lmAmbient.w;
+}
+
+// Sun visibility guess for hits without a shadow ray: surfaces open to the sky are lit.
+float guessVisibility(vec2 lm) {
+    return smoothstep(0.86, 1.0, lm.y);
 }
 
 vec3 skyRadiance(vec3 d) {

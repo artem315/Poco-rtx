@@ -17,7 +17,7 @@ public final class RtxConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger("PocoRTX");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static final Path PATH = FabricLoader.getInstance().getConfigDir().resolve("pocortx.json");
-    private static final int VERSION = 2;
+    private static final int VERSION = 3;
 
     private static RtxConfig instance = new RtxConfig();
 
@@ -58,7 +58,7 @@ public final class RtxConfig {
     }
 
     public enum DebugView {
-        OFF, AO, SHADOWS, GI, REFLECTIONS, VOLUMETRIC;
+        OFF, AO, SHADOWS, GI, REFLECTIONS, VOLUMETRIC, LIGHTING;
 
         public DebugView next() {
             DebugView[] values = values();
@@ -111,7 +111,7 @@ public final class RtxConfig {
     public boolean temporalDenoise = true;
     public boolean alphaTestedShadows = true;
     public float aoStrength = 0.8f;
-    public float shadowStrength = 0.5f;
+    public float shadowStrength = 1.0f;
     public float giStrength = 1.0f;
     public float reflectionStrength = 1.0f;
     public float specularStrength = 1.0f;
